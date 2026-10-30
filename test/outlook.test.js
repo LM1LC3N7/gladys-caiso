@@ -183,8 +183,14 @@ test('alert levels: each entry matched whole; spaces and case folded; an ended n
     [['Energy Emergency Alert 1 (EEA1)'], 4],
     [['EEA 3 - Load shed'], 6],
     [['EEA 3 \u2013 rotating outages'], 6],
-    // Transmission Emergency carries no level: alone, the level is unknown.
-    [['Transmission Emergency'], undefined],
+    // Transmission Emergency carries no level: alone, no supply notice (0).
+    [['Transmission Emergency'], 0],
+    [['Transmission Emergency - Northern CA Region'], 0],
+    // A comment that does not say the notice ended keeps it active.
+    [['EEA 2 - load management programs over the peak'], 5],
+    [['EEA 3 - Expired at 9 pm'], undefined],
+    // An end word further in the comment does not end the notice.
+    [['EEA 1 - in effect until lifted'], 4],
     [['EEA 3 cancelled'], undefined],
     [['EEA 3 - cancelled'], undefined],
     [['Flex Alert expired'], undefined],
@@ -213,4 +219,9 @@ test('alert levels: an entry not recognized is named and left out, never lowerin
     transmission: false,
   });
   assert.equal(entryOf(42), undefined);
+  // The reviewer's list (r2): a comment with "over" never sets an EEA 2 aside.
+  assert.equal(
+    levelOf(['EEA 2 - load management programs over the peak', 'EEA 1', 'EEA Watch']),
+    5,
+  );
 });

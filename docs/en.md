@@ -101,7 +101,8 @@ reference for the emergency notices is the ISO's page
 <https://www.caiso.com/emergency-notifications>. The status says it.
 
 Each entry is matched whole (case and spaces ignored, "EEA 1" or "EEA1"; a
-comment after a dash, as in "EEA 3 - Load shed", is ignored) against the
+comment after a dash, as in "EEA 3 - Load shed", is ignored, unless it starts
+with a word saying the notice ended: "- cancelled", "- expired"...) against the
 seven notices of the ISO and "Normal":
 
 | Level | Conditions                                                  |
@@ -111,14 +112,17 @@ seven notices of the ISO and "Normal":
 | 2     | Flex Alert                                                  |
 | 3     | EEA Watch (Energy Emergency Alert Watch)                    |
 | 4-6   | EEA 1, EEA 2, EEA 3 (Energy Emergency Alert 1, 2, 3; EEA1…) |
-| none  | Transmission Emergency                                      |
+| none  | Transmission Emergency (alone: 0)                           |
 
 The level is the **highest entry recognized**: on 6 September 2022 the list
 "EEA 3, EEA 2, EEA 1, EEA Watch, Flex Alert, Restricted Maintenance
 Operations, Transmission Emergency" gives 6. "Transmission Emergency" is a
 regional notice: it is shown in "Grid conditions" and never changes the
-level. An entry not recognized (a new wording, or one saying the notice ended,
-as "EEA 3 cancelled") is left out of the level and named in the status; when
+level; alone (no supply notice in the list), the level is 0, so that a level
+never stays at an old EEA. An entry not recognized (a new wording, or one saying the notice ended,
+as "EEA 3 cancelled") is left out of the level and named in the status: **the
+level published is then a minimum, and may be below the real one** (an
+unrecognized entry could be a higher notice). When
 no entry carries a level, the level is unknown and not published: Gladys then
 keeps showing the last level published, the "Grid conditions" text and the
 status say what the ISO wrote.

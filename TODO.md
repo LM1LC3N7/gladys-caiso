@@ -17,7 +17,9 @@
       caiso.com/emergency-notifications as the reference. Recognized (whole
       entries, review r1): Normal, RMO, Flex Alert, Transmission Emergency (no
       level), EEA Watch, EEA 1-3 (EEA1, Energy Emergency Alert n, a dash
-      comment); the four lists of 5-6 September 2022 (Wayback) give 4, 5, 1, 6.
+      comment unless it starts with an end word: "- cancelled", "- expired"...);
+      Transmission Emergency alone = 0; the four lists of 5-6 September 2022
+      (Wayback) give 4, 5, 1, 6.
       Ask the ISO whether ActiveEvents may be used as an open feed; if so, read
       it as the main source of the level.
 - [ ] `renewablesPercent` vs `renewablesPercentwoBatteries` (equal on
@@ -111,7 +113,9 @@ dollar` in $/MWh (the native unit, the name says it). Alert level 0-6 is
   carries a value only when fresh); the day check of `naiveOf` (a day out of
   its month always changes the month too); the `__proto__` key check of
   /data (a Map key, written back as an own property); `code === 'aborted'` in `failed` (an abort only comes from a stop, which `failed` never sees);
-  the size check before reading /data (the read loop says `too_large` too).
+  the size check before reading /data (the read loop says `too_large` too). After r2 (132 mutants of the reviewer, one at a time): G3, L2, A55b,
+  W2, W3, W5, U2 killed by tests; G2 equivalent (an Age above a day makes the
+  reading stale with or without the cap).
 
 ## Ideas
 

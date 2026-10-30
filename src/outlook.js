@@ -115,25 +115,31 @@ export function parseOutlook(text, anchor) {
  *   3 EEA Watch, 4 EEA 1, 5 EEA 2, 6 EEA 3.
  * The level is the highest entry recognized. "Transmission Emergency" (a
  * regional notice, it says nothing of the supply of the whole grid) is
- * recognized but has no level: it never hides an EEA nor lowers the level.
+ * recognized but has no level of its own: it never hides an EEA nor lowers
+ * the level; alone, it means no supply notice in force: level 0.
  * An entry not recognized (a new wording, "EEA 3 cancelled") is set aside and
  * named in the status; with no entry carrying a level, the level is unknown.
  */
 export const LEVELS = ['normal', 'rmo', 'flex_alert', 'eea_watch', 'eea1', 'eea2', 'eea3'];
 
-/** Words that say a notice is over: such an entry is never taken as active. */
-const ENDED =
-  /\b(cancel+ed|cancel+ation|expired|ended|lifted|terminated|rescinded|over|no longer)\b/;
+/**
+ * The first word of a comment after a dash that says the notice is over
+ * ("EEA 3 - cancelled"): such an entry is never taken as active. Only the head
+ * of the comment counts ("EEA 2 - programs over the peak" stays active); an
+ * entry whose main part says it ("EEA 3 cancelled") is not matched at all.
+ */
+const ENDED = /^(cancel+ed|cancel+ation|expired|ended|lifted|terminated|rescinded)\b/;
 
 /**
  * One entry -> { level } (0-6), { flag: 'transmission_emergency' } or undefined.
  */
 export function entryOf(text) {
   if (typeof text !== 'string') return undefined;
-  let t = text.toLowerCase().replace(/\s+/g, ' ').trim();
-  if (ENDED.test(t)) return undefined;
+  const folded = text.toLowerCase().replace(/\s+/g, ' ').trim();
   // "EEA 3 - Load shed": the part after a dash is a comment.
-  t = t.replace(/\s+[-–—]\s+.*$/, '');
+  const dash = /\s[-\u2013\u2014]\s/.exec(folded);
+  const t = dash ? folded.slice(0, dash.index) : folded;
+  if (dash && ENDED.test(folded.slice(dash.index + 3).trim())) return undefined;
   if (t === 'normal') return { level: 0 };
   if (t === 'restricted maintenance operations' || t === 'rmo') return { level: 1 };
   if (t === 'flex alert') return { level: 2 };
@@ -158,6 +164,9 @@ export function classify(conditions) {
     else if (entry.flag) out.transmission = true;
     else out.level = Math.max(out.level ?? 0, entry.level);
   }
+  // Only Transmission Emergency: no supply notice in force (never a level left
+  // over from an earlier EEA).
+  if (out.level === undefined && out.transmission) out.level = 0;
   return out;
 }
 

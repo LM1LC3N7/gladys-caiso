@@ -561,3 +561,95 @@ test('/data pauses that are not ours (count 0, unknown code) are ignored: read a
     assert.equal(ctx.sources.count('oasis'), 1, JSON.stringify(pause));
   }
 });
+
+// --- Review r2 -----------------------------------------------------------------------
+
+test('a negative Age never makes an old reading fresh', async () => {
+  const { parseAge } = await import('../src/http.js');
+  assert.equal(parseAge('-3600'), 0);
+  assert.equal(parseAge('22'), 22_000);
+  assert.equal(parseAge('99999999'), 24 * HOUR);
+  const ctx = await setup({ devices: 'grid' });
+  ctx.world.outlook = () => {
+    const slot = slotOf(ctx.clock.now() - 70 * MINUTE);
+    return answer(outlookBody({ slot }), {
+      date: ctx.clock.now(),
+      lastModified: slot + 3 * MINUTE,
+      headers: { age: '-3600' },
+    });
+  };
+  await ctx.begin();
+  assert.deepEqual(ctx.valuesOf(GRID('demand')), []);
+});
+
+test('stop() while a scene event is being sent: the next ones never leave', async () => {
+  const ctx = await setup({ devices: 'hubs', config: { low_price_threshold: 20 } });
+  const prices = new Map();
+  let price = 50;
+  ctx.world.state.price = (hub, start) => {
+    if (!prices.has(start)) prices.set(start, price);
+    return prices.get(start);
+  };
+  await ctx.begin();
+  let sent = 0;
+  let stopping;
+  const publish = ctx.gladys.publishSceneEvent.bind(ctx.gladys);
+  ctx.gladys.publishSceneEvent = async (key, data) => {
+    sent += 1;
+    if (sent === 1) stopping = ctx.app.stop();
+    await new Promise((resolve) => setImmediate(resolve));
+    return publish(key, data);
+  };
+  price = 10;
+  await ctx.wait(10 * MINUTE);
+  await stopping;
+  await ctx.wait(SECOND);
+  assert.equal(sent, 1, 'three hubs went below; only the event in flight left');
+});
+
+test('a publication that starts after stop() sends nothing, values included', async () => {
+  const ctx = await setup();
+  await ctx.begin();
+  ctx.app.forgetDevice({ external_id: 'ext:caiso:hub:np15' });
+  await ctx.app.stop();
+  const n = ctx.gladys.fake.states.length;
+  await ctx.app.publishValues();
+  assert.equal(ctx.gladys.fake.states.length, n);
+});
+
+test('saves asked while one hangs are written once it ends; "/data does not answer" then clears', async () => {
+  const store = createMemoryStore();
+  const ctx = await setup({ store });
+  const save = store.save.bind(store);
+  let first = true;
+  store.save = async (data) => {
+    if (first) {
+      first = false;
+      await new Promise((resolve) => ctx.clock.timers.setTimeout(resolve, 24 * SECOND));
+    }
+    return save(data);
+  };
+  ctx.app.connected(() => ctx.gladys.getConfig());
+  await ctx.wait(12 * SECOND);
+  assert.match(statusText(ctx), /\/data ne répond pas/);
+  await ctx.wait(20 * SECOND);
+  await ctx.app.idle();
+  assert.equal(store.data.asked.oasis, ctx.app.src.oasis.askedWall, 'the folded save was written');
+  assert.equal(store.data.asked.outlook, ctx.app.src.outlook.askedWall);
+  await ctx.wait(5 * MINUTE);
+  await ctx.app.idle();
+  assert.doesNotMatch(statusText(ctx), /ne répond pas/);
+});
+
+test('a status cut falls between two words, never inside one', async () => {
+  const { bound } = await import('../src/i18n.js');
+  const text =
+    'Reading of 10/29 23:50 PDT; not published: demand, net demand, renewables, carbon intensity';
+  for (const max of [30, 45, 60, 75]) {
+    const out = bound(text, max);
+    assert.ok(out.length <= max, out);
+    const head = out.replace(/…$/, '');
+    assert.ok(text.startsWith(head), out);
+    assert.match(text[head.length] ?? ' ', /[\s;,:]/, `${max}: ${out}`);
+  }
+});

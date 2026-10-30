@@ -71,7 +71,7 @@ test('the grid: the Outlook read at once, every value once, in the units of the 
   for (const state of ctx.gladys.fake.states) assert.equal(state.created_at, undefined);
   assert.equal(ctx.status().connected, true);
   // Only the note on where the alert level comes from.
-  assert.match(statusText(ctx), /^Niveau d'alerte tiré du champ gridstatus de stats\.txt/);
+  assert.match(statusText(ctx), /^Niveau d'alerte : champ gridstatus, parfois en retard/);
   assert.match(ctx.status().message.en, /caiso\.com\/emergency-notifications$/);
   // The next read sends back the ETag; a new slot is a new reading.
   await ctx.wait(5 * MINUTE);

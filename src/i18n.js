@@ -245,8 +245,8 @@ export const T = {
     fr: '/data ne répond pas, il ne peut pas être écrit pour l’instant (une sauvegarde toujours en cours) : le rythme et les relevés publiés restent en mémoire en attendant',
   },
   alertSource: {
-    en: 'Alert level from the gridstatus field of stats.txt, which the CAISO page no longer shows: it may lag or miss a notice; the reference is caiso.com/emergency-notifications',
-    fr: "Niveau d'alerte tiré du champ gridstatus de stats.txt, que la page de CAISO n'affiche plus : il peut être en retard ou manquer un avis ; la référence est caiso.com/emergency-notifications",
+    en: 'Alert level: gridstatus field, may lag; see caiso.com/emergency-notifications',
+    fr: "Niveau d'alerte : champ gridstatus, parfois en retard ; voir caiso.com/emergency-notifications",
   },
   dataUnwritable: {
     en: '/data cannot be written: the pace and the readings published are kept in memory only',

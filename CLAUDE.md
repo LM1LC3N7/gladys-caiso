@@ -11,13 +11,22 @@ Gladys through
 [`@gladysassistant/integration-sdk`](https://github.com/GladysAssistant/integration-sdk-js),
 its only runtime dependency. It started from the official JavaScript template.
 
+It reads the **California grid** from the public files of the California ISO
+(CAISO): Today's Outlook (`stats.txt`, the grid) and OASIS (the real-time
+prices of the NP15, SP15 and ZP26 hubs, a ZIP). Unofficial. **Read-only**:
+never `onSetValue`, only GET requests. No neighbour module; structure taken
+from `gladys-attente-frontiere` (app, store, http, clock helpers, tests);
+gridstatus (BSD-3-Clause) read as the reference of the endpoints.
+
 ## Commands
 
 ```bash
 npm install
-npm test                                  # node --test, the built-in runner
-node --test test/devices.test.js          # one file
-node --test --test-name-pattern "plug"    # tests whose name matches
+npm test                                  # node --test --test-timeout=60000
+node --test test/app.test.js              # one file
+node --test --test-name-pattern "pace"    # tests whose name matches
+npm run audit                             # npm audit --omit=dev
+npm run cover                             # cover.png, 800 x 534, plain Node
 npm run lint                              # ESLint
 npm run format:check                      # Prettier, as the CI runs it
 npm run format                            # Prettier, fix in place
@@ -31,46 +40,49 @@ pushing.
 ## Architecture
 
 ```
-index.js                          SDK wiring only: handlers registered before connect()
-src/devices/index.js              registry of the device blueprints + dispatch helpers
-src/devices/<type>.js             one device type per file (buildDevice, onPoll, onSetValue...)
-src/scenes.js                     scene action handlers (manifest `scene_actions`)
-src/widgets.js                    dashboard widget handlers (manifest `widgets`)
-src/config.js                     DEFAULT_CONFIG (mirrors the manifest defaults) + normalization
-src/weather.js                    example driver (Open-Meteo)
-gladys-assistant-integration.json manifest: name, config_schema, actions, image...
-docs/en.md, docs/fr.md            user documentation, re-hosted by Gladys (mandatory)
-test/                             node --test, against the SDK's fake Gladys (integration-sdk/testing)
-.github/scripts/release.mjs       release helpers (manifest bump, changelog), tested in test/
+index.js                entry point: the SDK client, the app, src/wire.js, connect()
+src/wire.js             the SDK handlers wired to the app (also used by the tests)
+src/app.js              CaisoApp: getConfig retries, pace per source, reads, views, publication,
+                        scene triggers, status, /data
+src/http.js             the only network access (GET, bounded in time and size, text or bytes)
+src/outlook.js          stats.txt -> the grid values, the alert level (pure)
+src/oasis.js            the OASIS query, its ZIP -> the hub prices or the XML error (pure)
+src/zip.js              the one file of a ZIP, bounded, CRC checked (pure)
+src/pacific.js          Pacific local times <-> UTC (Intl), the time formats of the ISO (pure)
+src/devices.js          the devices, feature keys, external ids (pure)
+src/store.js            what /data keeps across restarts (unreadable is not empty)
+src/config.js           the form, normalized
+src/constants.js        URLs, pacing, limits, bounds
+src/i18n.js             runtime texts (en/fr)
+test/helpers/app.js     the app on a fake Gladys, scripted sources (real layouts, made-up numbers)
+test/helpers/clock.js   virtual and real clocks (copied from the test kit)
+test/helpers/zip.js     a ZIP of one file, built by hand
 ```
 
 ## Rules
 
-- **External ids are forever.** Build them with
-  `gladys.externalIds(type, platformId)`, `platformId` being the unique id the
-  platform gives the device (serial, cloud id, MAC), never a label. Gladys keys
-  devices, their history, scenes and dashboards on them: changing one creates a
-  new device and orphans the old one. The same goes for every key users store:
-  manifest `config_schema`, `actions`, widget and scene keys, feature keys.
-- **The container rootfs is read-only.** Write only under `/data`, the one
-  writable volume. Never log tokens, passwords or API keys.
-- **Versions belong to the Release workflow** (Actions → Release). Never edit
-  `version` in `package.json` or in the manifest, nor the `docker_image` tag,
-  by hand — except on the README's hand-pushed tag path, which bumps all three
-  together before tagging. `test/manifest.test.js` checks they agree.
-- **Changelog.** Every user-visible change adds a line under `## [Unreleased]`
-  in `CHANGELOG.md` (`### Added`, `Changed`, `Fixed`, `Removed`, `Security`).
-  Never write a version heading: the Release workflow moves the section, and it
-  becomes the notes of the GitHub Release.
-- **Manifest.** Texts are multi-language objects `{ "en": ..., "fr": ... }`:
-  `label`, `description` and `placeholder` alike, never a plain string. The
-  catalog `description` holds 10 to 100 characters per language. A field the
-  older cores do not know needs a higher `gladys_version` minimum
-  (`categories`: 4.86.0; `widgets`, `scene_triggers`, `scene_actions`,
-  `type: "provider"`: 5.1.0). `test/manifest.test.js` ties the manifest to the
-  code (defaults, action, scene and widget handlers): change both sides
-  together.
-- **User-facing text** is bilingual (English and French): action messages,
-  manifest texts, and `docs/en.md` / `docs/fr.md`, kept in sync.
-- **Style.** Prettier formats, ESLint catches mistakes. Comments explain why,
-  in English. Tests never touch the network.
+- **External ids are forever**: `ext:<selector>:grid:caiso` and
+  `ext:<selector>:hub:<np15|sp15|zp26>`; feature keys `demand`, `net_demand`,
+  `renewables`, `carbon_intensity`, `co2`, `alert_level`, `conditions`,
+  `status`, `price`; scene trigger keys `low_price`, `grid_alert` and their
+  option values.
+- **Never an unknown as a number**: a missing, unreadable, out of range or
+  stale value is not published; the status texts say it.
+- **Freshness**: a reading published once (source time in /data), only while
+  fresh, without `created_at`; the views are evaluated again when they change
+  without a read (`nextChange`).
+- **Pace**: per source, never two requests less than the interval apart
+  (OASIS never under 5 s), the time asked in /data before the request (bounded
+  wait); one request at a time; a source never blocks the other; 429/5xx pause
+  per source, read again right when it ends.
+- **Clocks**: `monotonic` for every timer, pace, pause and age; the wall clock
+  only for /data, the OASIS window and a source without a usable `Date`
+  header. One clock read per decision.
+- **Wholesale prices are not a retail rate**: said in the docs, texts, status.
+- Units: only `DEVICE_FEATURE_UNITS_BY_CATEGORY` of the core; no
+  `energy-sensor` (a grid is not a home meter).
+- **Versions belong to the Release workflow**; `test/manifest.test.js` checks
+  they agree. **Changelog** under `## [Unreleased]`. **User-facing text**
+  bilingual (en/fr), docs in sync with the code.
+- **Style**: Prettier, ESLint; comments in English explain why; tests never
+  touch the network beyond 127.0.0.1.

@@ -1,33 +1,59 @@
+// -----------------------------------------------------------------------------
+// The form, normalized: defaults, bounds, strict numbers; a value replaced is
+// noted for the status (never repeated back).
+// -----------------------------------------------------------------------------
+
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeConfig, DEFAULT_CONFIG } from '../src/config.js';
+import { normalizeConfig } from '../src/config.js';
 
-test('normalizeConfig returns the defaults when called with no argument', () => {
-  assert.deepEqual(normalizeConfig(), DEFAULT_CONFIG);
+test('defaults: French, 5 minutes, threshold 0', () => {
+  const defaults = { language: 'fr', intervalMinutes: 5, threshold: 0, notes: [] };
+  assert.deepEqual(normalizeConfig(), defaults);
+  assert.deepEqual(
+    normalizeConfig({ interval_minutes: '', language: null, low_price_threshold: '' }),
+    defaults,
+  );
+  assert.deepEqual(normalizeConfig(null), defaults);
+  assert.deepEqual(normalizeConfig('x'), defaults);
 });
 
-test('normalizeConfig keeps user values over the defaults', () => {
-  const config = normalizeConfig({ latitude: 45.5, longitude: -73.6, unit: 'fahrenheit' });
-  assert.equal(config.latitude, 45.5);
-  assert.equal(config.longitude, -73.6);
-  assert.equal(config.unit, 'fahrenheit');
+test('the interval: 5 to 60 minutes, out of bounds brought back and noted', () => {
+  assert.equal(normalizeConfig({ interval_minutes: 30 }).intervalMinutes, 30);
+  assert.equal(normalizeConfig({ interval_minutes: '15' }).intervalMinutes, 15);
+  assert.deepEqual(normalizeConfig({ interval_minutes: 1 }), {
+    language: 'fr',
+    intervalMinutes: 5,
+    threshold: 0,
+    notes: ['interval'],
+  });
+  assert.equal(normalizeConfig({ interval_minutes: -3 }).intervalMinutes, 5);
+  assert.equal(normalizeConfig({ interval_minutes: 600 }).intervalMinutes, 60);
+  for (const bad of ['7.5', 7.5, 'abc', '1e1', NaN, true]) {
+    const r = normalizeConfig({ interval_minutes: bad });
+    assert.equal(r.intervalMinutes, 5, String(bad));
+    assert.deepEqual(r.notes, ['interval'], String(bad));
+  }
 });
 
-test('normalizeConfig coerces numeric strings coming from a form', () => {
-  const config = normalizeConfig({ latitude: '48.8', longitude: '2.3', poll_frequency: '600' });
-  assert.equal(config.latitude, 48.8);
-  assert.equal(config.longitude, 2.3);
-  assert.equal(config.poll_frequency, 600);
-  assert.equal(typeof config.poll_frequency, 'number');
+test('the threshold: a decimal in -1000..2000 $/MWh; beyond brought back, unreadable = 0, noted', () => {
+  assert.equal(normalizeConfig({ low_price_threshold: -25.5 }).threshold, -25.5);
+  assert.equal(normalizeConfig({ low_price_threshold: '12.25' }).threshold, 12.25);
+  assert.equal(normalizeConfig({ low_price_threshold: 0 }).threshold, 0);
+  const low = normalizeConfig({ low_price_threshold: -5000 });
+  assert.equal(low.threshold, -1000);
+  assert.deepEqual(low.notes, ['threshold']);
+  assert.equal(normalizeConfig({ low_price_threshold: 9999 }).threshold, 2000);
+  for (const bad of ['cheap', '1,5', Infinity, {}]) {
+    const r = normalizeConfig({ low_price_threshold: bad });
+    assert.equal(r.threshold, 0, String(bad));
+    assert.deepEqual(r.notes, ['threshold']);
+  }
 });
 
-test('normalizeConfig falls back to the default for a missing numeric field', () => {
-  const config = normalizeConfig({ unit: 'celsius' });
-  assert.equal(config.poll_frequency, DEFAULT_CONFIG.poll_frequency);
-});
-
-test('GLADYS_PREFER_LOCAL defaults to true and only an explicit false disables it', () => {
-  assert.equal(normalizeConfig().GLADYS_PREFER_LOCAL, true);
-  assert.equal(normalizeConfig({ GLADYS_PREFER_LOCAL: true }).GLADYS_PREFER_LOCAL, true);
-  assert.equal(normalizeConfig({ GLADYS_PREFER_LOCAL: false }).GLADYS_PREFER_LOCAL, false);
+test('the language: fr or en, anything else is French and noted', () => {
+  assert.equal(normalizeConfig({ language: 'en' }).language, 'en');
+  const r = normalizeConfig({ language: 'de' });
+  assert.equal(r.language, 'fr');
+  assert.deepEqual(r.notes, ['language']);
 });

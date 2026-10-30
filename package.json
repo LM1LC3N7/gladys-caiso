@@ -1,8 +1,8 @@
 {
-  "name": "gladys-integration-template-js",
-  "version": "1.0.0",
+  "name": "gladys-caiso",
+  "version": "0.1.0",
   "private": true,
-  "description": "Official starter template to build an external integration for Gladys Assistant with the JavaScript SDK.",
+  "description": "California grid (CAISO) for Gladys Assistant, from the public files of the California ISO: real-time wholesale prices of the NP15, SP15 and ZP26 hubs, demand, renewables share, CO2, grid conditions (Flex Alert, EEA) and scene triggers. Read-only.",
   "type": "module",
   "main": "index.js",
   "scripts": {
@@ -10,10 +10,16 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "node --test"
+    "test": "node --test --test-timeout=60000",
+    "audit": "npm audit --omit=dev",
+    "cover": "node scripts/cover.mjs cover.png"
   },
   "engines": {
     "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LM1LC3N7/gladys-caiso.git"
   },
   "dependencies": {
     "@gladysassistant/integration-sdk": "^0.16.0"

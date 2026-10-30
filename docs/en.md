@@ -1,61 +1,165 @@
-# Demo Devices Template
+# California grid (CAISO)
 
-This is the user documentation of the integration. Gladys re-hosts this file
-and shows a permanent **Documentation** link to it in the Configuration screen
-(in the user's language, with English as the fallback) — it is when
-configuring that the user needs it most. Keep the short onboarding hints in
-the `section` blocks of the manifest `config_schema`; put the long
-step-by-step (screenshots, troubleshooting…) here.
+Unofficial integration. It reads the public files of the California
+Independent System Operator (CAISO), the operator of most of the California
+grid, without account nor key, and publishes in Gladys:
 
-## What you get
+- **the grid**: demand and net demand (MW), renewables share (%), carbon
+  intensity (g/kWh), CO2 emissions (t/h), the grid conditions published by
+  the ISO (Normal, Flex Alert, EEA...) and an alert level from 0 to 6;
+- **the real-time wholesale prices** of the three trading hubs NP15 (Northern
+  California), SP15 (Southern California) and ZP26 (Central California), in
+  $/MWh, 5-minute intervals.
 
-Six demo devices show up after installation: a weather station (real data
-from Open-Meteo), a switch, a dimmable light, a smart plug with power
-metering, a motion sensor and a camera.
+**Wholesale prices are not your retail rate.** They are the prices of the
+market where the ISO balances the grid (locational marginal price, LMP). Your
+utility bills you a retail rate (PG&E, SCE, SDG&E...) that does not follow
+them minute by minute. Use them as a signal (cheap, often negative, when solar
+floods the grid), not as a bill.
 
-## Configuration
+Tried against the real CAISO files (Today's Outlook and OASIS) on 2026-10-30,
+and in the Gladys sandbox; never tested with a real Gladys at home, and never
+seen during a real Flex Alert or EEA (see "Grid conditions").
 
-1. Open the **Configuration** tab of the integration.
-2. Set the **latitude** and **longitude** the demo weather station should
-   observe (they default to Paris), and pick your temperature unit.
-   The **refresh interval** sets how often the weather station and the
-   plug's power are read: every 5 minutes by default, every minute at most.
-3. Save: the devices appear in the **Discovery** tab, ready to be added.
+## Setup
 
-The **Prefer the local connection** toggle drives the demo plug: it reports
-the channel it actually uses as a badge (local or cloud), with an orange dot
-when it runs degraded (local refused, cloud fallback).
+1. Install the integration from the store, open its page.
+2. Pick the language of the texts, the read interval (5 to 60 minutes, 5 by
+   default: the ISO updates both sources every 5 minutes) and, if you want the
+   scene trigger, the low price threshold.
+3. In the **Discovery** tab, create the devices you want: the grid, and one or
+   more hubs. **A source is only read while a device needs it**: the grid
+   needs Today's Outlook, a hub needs OASIS. Nothing is read before.
 
-## Actions
+## Devices
 
-- **Test the weather provider** — performs a live request to Open-Meteo and
-  shows the current temperature and humidity under the button.
-- **Identify a device** — pick one of your devices in the list and it will
-  signal itself (the demo light "blinks" in the logs).
+### California grid (CAISO)
 
-## Scenes
+| Feature                        | Unit          | From                                         |
+| ------------------------------ | ------------- | -------------------------------------------- |
+| Demand                         | MW (in name)  | `CurrentSystemDemand`, with its own time     |
+| Net demand (minus wind, solar) | MW (in name)  | `CurrentNetDemand`, with its own time        |
+| Renewables share               | %             | `renewablesPercent` (above 100 %: 100)       |
+| Carbon intensity               | g/kWh         | `currentCo2intensity` (t/MWh × 1000, exact)  |
+| CO2 emissions                  | t/h (in name) | `currentCo2`                                 |
+| Alert level                    | 0 to 6        | the grid conditions, see below               |
+| Grid conditions                | text          | the words of the ISO, as published           |
+| Data status                    | text          | time of the reading, or why nothing is shown |
 
-The integration adds its own cards to the scene editor (Gladys 5.1 or
-later), under the **Integrations** category:
+The renewables share is the one the ISO publishes: renewables (solar, wind,
+geothermal, biomass, biogas, small hydro; large hydro excluded, as in
+California's rules) over the demand. When renewables exceed the demand (the
+rest exported or stored), all the electricity consumed is renewable: 100.
+The carbon intensity and the emissions are the ISO's CO2 figures (imports
+included), not CO2-equivalent.
 
-- **Motion detected** (trigger) — starts the scene when a demo motion sensor
-  sees something move. Optionally pick the sensor and what moved (person,
-  animal); left empty, any detection matches. The following actions can
-  read what moved with `{{triggerEvent.data.target}}`.
-- **Identify a device** (action) — makes the chosen device signal itself.
-  It returns whether the device could signal itself, so the following
-  actions can depend on it.
+The demand values are not `energy` sensors: a whole grid is not a home meter,
+and they never enter the energy dashboards of Gladys.
 
-## Dashboard
+### CAISO wholesale price NP15 / SP15 / ZP26
 
-Add the **Demo status** widget to a dashboard: it shows the live
-temperature of the weather station and the power of the office plug, the
-connection the plug currently uses (orange when degraded) and the observed
-location. Its **Identify the light** button makes the demo light signal
-itself.
+| Feature                   | Unit  | From                                       |
+| ------------------------- | ----- | ------------------------------------------ |
+| Real-time wholesale price | $/MWh | OASIS `PRC_INTVL_LMP`, market RTM, hub LMP |
+| Data status               | text  | the 5-minute interval shown, or why not    |
 
-## Troubleshooting
+One OASIS query reads the three hubs at once (the ISO allows one request
+every 5 seconds; the integration never sends two less than the interval
+apart). The answer holds the interval running and the next one or two: when a
+new interval starts between two reads, its price (already received) is
+published at once, without a request.
 
-The integration logs everything it does: check the integration logs from the
-Gladys UI (or `docker logs` on the host) with `LOG_LEVEL=debug` for the full
-detail.
+## Freshness: nothing old shown as new, never 0 for an unknown
+
+- A value is published **once per reading of the source**, only while it is
+  fresh: a reading of Today's Outlook at most **20 minutes** old (its own
+  time, turned into UTC with the Last-Modified of the file), a price whose
+  interval ended at most **10 minutes** ago (OASIS times are UTC).
+- A missing, unreadable, out of range or stale value is **never published**,
+  and never as 0: the "Data status" text and the integration status say so
+  ("Stale, nothing published: last reading of 10/29 22:55 (Pacific time)",
+  "not published: demand"). The texts are updated when a reading turns stale
+  even without a new read.
+- After a restart, nothing is published before a new reading (a reading
+  already published before the restart is never sent again).
+- Times are Pacific times (the ISO's), turned into UTC exactly across the
+  changes of time; in the hour repeated in November, a time without the
+  Last-Modified of its file is unreadable (never a guess).
+
+## Grid conditions and alert level
+
+The grid conditions are the `gridstatus` list of Today's Outlook (the line
+"Grid conditions" of the ISO's page). The integration recognizes these words
+(case ignored) and turns them into a level:
+
+| Level | Conditions                                           |
+| ----- | ---------------------------------------------------- |
+| 0     | Normal                                               |
+| 1     | Restricted Maintenance Operations                    |
+| 2     | Flex Alert                                           |
+| 3     | EEA Watch (Energy Emergency Alert Watch)             |
+| 4-6   | EEA 1, EEA 2, EEA 3 (Energy Emergency Alert 1, 2, 3) |
+
+Several conditions at once: the highest level. **Any word not recognized makes
+the level unknown**: the level is not published (never a lower one), the
+words of the ISO are still published in "Grid conditions", and the status says
+"conditions not recognized". The exact wording of an EEA in this file could
+not be checked (none happened while the integration was written); the ISO also
+announces them by its own notices, which remain the reference.
+
+## Scene triggers
+
+- **Low wholesale price (CAISO)**: a hub price went below the "Low price
+  threshold" of the configuration (`phase` = `started`), or came back at or
+  above it (`ended`). Filters: the hub, the phase. Variables: hub, phase,
+  price, threshold. Only for a hub whose device is created.
+- **Grid conditions changed (CAISO)**: the alert level changed (`level`,
+  `previous_level`, `conditions` = the words of the ISO). Filter: the new
+  level. Only while the grid device is created.
+
+Each fires once per change, on a fresh reading only. The first value seen
+after the installation (or after a new threshold) is a reference, never an
+event; the last state is kept in /data, so a restart never fires a trigger
+again. An unknown level, or a stale reading, is never a change. An event that
+Gladys does not accept is sent again with the next reading if the change still
+holds.
+
+For a condition on the value itself ("price below X while..."), the price
+feature works with the usual device triggers of Gladys.
+
+## Pace, errors and status
+
+- Each source at its own pace: never two requests less than the interval
+  apart (kept across restarts), one request at a time, an honest User-Agent,
+  the ETag and Last-Modified of Today's Outlook sent back (a 304 keeps the
+  reading and its age). The Discovery tab, a device updated, a reconnection to
+  Gladys send no request; saving the form sends one only if a shorter interval
+  makes a source due; a device created sends one only when its source was not
+  asked within the interval.
+- HTTP 429 or 5xx: the source pauses 5 minutes, doubled at each new refusal,
+  from 60 seconds to 6 hours, `Retry-After` honoured; kept across restarts; the
+  other source goes on. It is read again right when the pause ends.
+- The status is "connected" only when a source answered and holds fresh data
+  (right after a restart, before the first read is due: when a source read
+  fine within the interval before the restart).
+  It lists, in English and French: the source unreachable, paused, refused,
+  stale, values not published, conditions not recognized, OASIS "no data" or
+  an OASIS error code, /data not readable or not writable, and "prices are
+  wholesale market prices, not your retail rate".
+- `getConfig` failing at a connection to Gladys: tried again after 5 s, doubled
+  up to 5 minutes, without end; the status says so.
+- /data (the pace, the pauses, what was published, the trigger states): each
+  wait is bounded (5 s); a file that cannot be read is set aside, never
+  overwritten, and said. **While /data cannot be written** (said in the
+  status), all of this lives in memory only: a restart then reads at once,
+  may publish the last reading again and may fire a trigger again; the
+  promises about restarts above hold only while /data can be written.
+
+## Sources and limits
+
+- Today's Outlook: `https://www.caiso.com/outlook/current/stats.txt`.
+- OASIS: `https://oasis.caiso.com/oasisapi/SingleZip` (public interface,
+  documented by the ISO, no key).
+- Data © California ISO. This integration is not affiliated with nor endorsed
+  by the California ISO.
+- Read-only: the integration only sends GET requests.

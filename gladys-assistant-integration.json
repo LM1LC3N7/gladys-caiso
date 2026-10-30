@@ -1,177 +1,181 @@
 {
   "manifest_version": 1,
   "type": "device",
-  "name": "Demo Devices Template",
+  "name": "California grid (CAISO)",
   "description": {
-    "en": "Starter template showing sensors, a switch, a dimmable light and a smart plug.",
-    "fr": "Template de démarrage : capteurs, interrupteur, lampe variable et prise connectée."
+    "en": "Unofficial. California grid (CAISO): wholesale prices, demand, renewables, CO2, Flex Alert.",
+    "fr": "Non officiel. Réseau californien (CAISO) : prix de gros, demande, renouvelables, CO2, alertes."
   },
-  "version": "1.0.0",
-  "docker_image": "ghcr.io/gladysassistant/integration-template-js:1.0.0",
+  "version": "0.1.0",
+  "docker_image": "ghcr.io/lm1lc3n7/gladys-caiso:0.1.0",
   "gladys_version": ">=5.1.0",
-  "cover_image": "https://raw.githubusercontent.com/GladysAssistant/integration-template-js/master/cover.png",
-  "categories": ["lighting", "security", "environment"],
-  "transports": ["local", "cloud"],
+  "cover_image": "https://raw.githubusercontent.com/LM1LC3N7/gladys-caiso/main/cover.png",
+  "categories": ["energy", "environment"],
+  "transports": ["cloud"],
   "config_schema": [
     {
       "key": "intro",
       "type": "section",
-      "label": { "en": "Getting started", "fr": "Pour commencer" },
+      "label": { "en": "California grid (CAISO)", "fr": "Réseau californien (CAISO)" },
       "description": {
-        "en": "The demo weather station reads real data from the free Open-Meteo API: pick the coordinates to observe. No account, no API key.",
-        "fr": "La station météo de démonstration lit de vraies données via l'API gratuite Open-Meteo : choisissez les coordonnées à observer. Pas de compte, pas de clé d'API."
+        "en": "Reads the public files of the California ISO, without account nor key: Today's Outlook (demand, renewables share, CO2, grid conditions such as Flex Alert) and OASIS (real-time wholesale prices of the NP15, SP15 and ZP26 hubs). Create the devices you want from the Discovery tab: a source is only read while a device needs it. Wholesale prices are not your retail electricity rate.",
+        "fr": "Lit les fichiers publics de l'opérateur du réseau californien, sans compte ni clé : Today's Outlook (demande, part renouvelable, CO2, conditions du réseau comme Flex Alert) et OASIS (prix de gros temps réel des hubs NP15, SP15 et ZP26). Créez les appareils voulus depuis l'onglet Découverte : une source n'est lue que si un appareil en a besoin. Les prix de gros ne sont pas votre tarif d'électricité."
       },
       "links": [
         {
-          "url": "https://open-meteo.com/en/docs",
-          "label": { "en": "Open-Meteo documentation", "fr": "Documentation Open-Meteo" }
-        }
-      ]
-    },
-    {
-      "key": "latitude",
-      "type": "number",
-      "label": { "en": "Latitude", "fr": "Latitude" },
-      "description": {
-        "en": "Latitude used for the demo weather sensor.",
-        "fr": "Latitude utilisée par le capteur météo de démonstration."
-      },
-      "placeholder": { "en": "e.g. 48.8566", "fr": "ex. 48.8566" },
-      "required": true,
-      "default": 48.8566,
-      "min": -90,
-      "max": 90
-    },
-    {
-      "key": "longitude",
-      "type": "number",
-      "label": { "en": "Longitude", "fr": "Longitude" },
-      "description": {
-        "en": "Longitude used for the demo weather sensor.",
-        "fr": "Longitude utilisée par le capteur météo de démonstration."
-      },
-      "placeholder": { "en": "e.g. 2.3522", "fr": "ex. 2.3522" },
-      "required": true,
-      "default": 2.3522,
-      "min": -180,
-      "max": 180
-    },
-    {
-      "key": "unit",
-      "type": "select",
-      "label": { "en": "Temperature unit", "fr": "Unité de température" },
-      "required": false,
-      "default": "celsius",
-      "options": [
-        { "value": "celsius", "label": { "en": "Celsius", "fr": "Celsius" } },
-        { "value": "fahrenheit", "label": { "en": "Fahrenheit", "fr": "Fahrenheit" } }
-      ]
-    },
-    {
-      "key": "poll_frequency",
-      "type": "number",
-      "label": { "en": "Refresh interval (s)", "fr": "Intervalle de rafraîchissement (s)" },
-      "description": {
-        "en": "How often sensors are polled, in seconds (one minute minimum).",
-        "fr": "Fréquence d'interrogation des capteurs, en secondes (une minute minimum)."
-      },
-      "required": false,
-      "default": 300,
-      "min": 60,
-      "max": 3600
-    }
-  ],
-  "actions": [
-    {
-      "key": "test_weather",
-      "label": { "en": "Test the weather provider", "fr": "Tester le fournisseur météo" },
-      "timeout_seconds": 30
-    },
-    {
-      "key": "identify",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "fields": [
+          "url": "https://www.caiso.com/todays-outlook",
+          "label": { "en": "CAISO Today's Outlook", "fr": "Today's Outlook de CAISO" }
+        },
         {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
+          "url": "https://oasis.caiso.com/",
+          "label": { "en": "CAISO OASIS", "fr": "OASIS de CAISO" }
         }
       ]
+    },
+    {
+      "key": "language",
+      "type": "select",
+      "label": { "en": "Language of the device texts", "fr": "Langue des textes des appareils" },
+      "description": {
+        "en": "Language of the device names and status texts.",
+        "fr": "Langue des noms d'appareils et des textes d'état."
+      },
+      "required": false,
+      "default": "fr",
+      "options": [
+        { "value": "fr", "label": { "en": "French", "fr": "Français" } },
+        { "value": "en", "label": { "en": "English", "fr": "Anglais" } }
+      ]
+    },
+    {
+      "key": "interval_minutes",
+      "type": "number",
+      "label": { "en": "Read interval (minutes)", "fr": "Intervalle de lecture (minutes)" },
+      "description": {
+        "en": "Time between two reads of each source, 5 to 60 minutes. The ISO updates both every 5 minutes.",
+        "fr": "Temps entre deux lectures de chaque source, de 5 à 60 minutes. L'opérateur met les deux à jour toutes les 5 minutes."
+      },
+      "required": false,
+      "default": 5,
+      "min": 5,
+      "max": 60
+    },
+    {
+      "key": "low_price_threshold",
+      "type": "number",
+      "label": { "en": "Low price threshold ($/MWh)", "fr": "Seuil de prix bas ($/MWh)" },
+      "description": {
+        "en": "The \"Low wholesale price\" scene trigger fires when a hub price goes below this value, and again when it comes back at or above it. 0 = negative prices.",
+        "fr": "Le déclencheur de scène « Prix de gros bas » part quand le prix d'un hub passe sous cette valeur, et de nouveau quand il revient au-dessus ou à égalité. 0 = prix négatifs."
+      },
+      "required": false,
+      "default": 0,
+      "min": -1000,
+      "max": 2000
     }
   ],
   "scene_triggers": [
     {
-      "key": "motion_detected",
-      "label": { "en": "Motion detected", "fr": "Mouvement détecté" },
+      "key": "low_price",
+      "label": { "en": "Low wholesale price (CAISO)", "fr": "Prix de gros bas (CAISO)" },
       "description": {
-        "en": "A demo motion sensor saw a person or an animal move.",
-        "fr": "Un détecteur de démonstration a vu bouger une personne ou un animal."
+        "en": "The real-time price of a hub went below the threshold of the configuration, or came back at or above it. Wholesale price, not your rate.",
+        "fr": "Le prix temps réel d'un hub est passé sous le seuil de la configuration, ou revenu au-dessus ou à égalité. Prix de gros, pas votre tarif."
       },
       "fields": [
         {
-          "key": "device",
+          "key": "hub",
           "type": "select",
-          "source": "devices",
-          "label": { "en": "Sensor", "fr": "Détecteur" }
+          "label": { "en": "Hub", "fr": "Hub" },
+          "options": [
+            { "value": "np15", "label": { "en": "NP15 (north)", "fr": "NP15 (nord)" } },
+            { "value": "sp15", "label": { "en": "SP15 (south)", "fr": "SP15 (sud)" } },
+            { "value": "zp26", "label": { "en": "ZP26 (center)", "fr": "ZP26 (centre)" } }
+          ]
         },
         {
-          "key": "target",
-          "type": "multi_select",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" },
+          "key": "phase",
+          "type": "select",
+          "label": { "en": "When", "fr": "Quand" },
           "options": [
-            { "value": "person", "label": { "en": "Person", "fr": "Personne" } },
-            { "value": "animal", "label": { "en": "Animal", "fr": "Animal" } }
+            {
+              "value": "started",
+              "label": { "en": "Went below the threshold", "fr": "Passé sous le seuil" }
+            },
+            {
+              "value": "ended",
+              "label": {
+                "en": "Back at or above the threshold",
+                "fr": "Revenu au seuil ou au-dessus"
+              }
+            }
+          ]
+        }
+      ],
+      "variables": [
+        { "key": "hub", "type": "string", "label": { "en": "Hub", "fr": "Hub" } },
+        { "key": "phase", "type": "string", "label": { "en": "When", "fr": "Quand" } },
+        {
+          "key": "price",
+          "type": "number",
+          "label": { "en": "Price ($/MWh)", "fr": "Prix ($/MWh)" }
+        },
+        {
+          "key": "threshold",
+          "type": "number",
+          "label": { "en": "Threshold ($/MWh)", "fr": "Seuil ($/MWh)" }
+        }
+      ]
+    },
+    {
+      "key": "grid_alert",
+      "label": {
+        "en": "Grid conditions changed (CAISO)",
+        "fr": "Conditions du réseau changées (CAISO)"
+      },
+      "description": {
+        "en": "The grid conditions published by the ISO changed level: Normal, Restricted Maintenance Operations, Flex Alert, EEA Watch, EEA 1, 2 or 3.",
+        "fr": "Les conditions du réseau publiées par l'opérateur ont changé de niveau : normal, Restricted Maintenance Operations, Flex Alert, EEA Watch, EEA 1, 2 ou 3."
+      },
+      "fields": [
+        {
+          "key": "level",
+          "type": "multi_select",
+          "label": { "en": "New level", "fr": "Nouveau niveau" },
+          "options": [
+            { "value": "normal", "label": { "en": "Normal", "fr": "Normal" } },
+            {
+              "value": "rmo",
+              "label": {
+                "en": "Restricted Maintenance Operations",
+                "fr": "Restricted Maintenance Operations"
+              }
+            },
+            { "value": "flex_alert", "label": { "en": "Flex Alert", "fr": "Flex Alert" } },
+            { "value": "eea_watch", "label": { "en": "EEA Watch", "fr": "EEA Watch" } },
+            { "value": "eea1", "label": { "en": "EEA 1", "fr": "EEA 1" } },
+            { "value": "eea2", "label": { "en": "EEA 2", "fr": "EEA 2" } },
+            { "value": "eea3", "label": { "en": "EEA 3", "fr": "EEA 3" } }
           ]
         }
       ],
       "variables": [
         {
-          "key": "target",
+          "key": "level",
           "type": "string",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" }
+          "label": { "en": "New level", "fr": "Nouveau niveau" }
+        },
+        {
+          "key": "previous_level",
+          "type": "string",
+          "label": { "en": "Previous level", "fr": "Niveau précédent" }
+        },
+        {
+          "key": "conditions",
+          "type": "string",
+          "label": { "en": "Conditions (ISO wording)", "fr": "Conditions (texte de l'opérateur)" }
         }
       ]
-    }
-  ],
-  "scene_actions": [
-    {
-      "key": "identify_device",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "description": {
-        "en": "Make a device signal itself (the demo light blinks).",
-        "fr": "Fait se signaler un appareil (la lampe de démonstration clignote)."
-      },
-      "timeout_seconds": 15,
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
-        }
-      ],
-      "outputs": [
-        {
-          "key": "signalled",
-          "type": "boolean",
-          "label": { "en": "Device signalled", "fr": "Appareil signalé" }
-        }
-      ]
-    }
-  ],
-  "widgets": [
-    {
-      "key": "demo_status",
-      "label": { "en": "Demo status", "fr": "État de la démo" },
-      "description": {
-        "en": "Live temperature and plug power, plug connection and observed location.",
-        "fr": "Température et puissance en direct, connexion de la prise, position observée."
-      },
-      "icon": "activity",
-      "action_timeout_seconds": 15
     }
   ]
 }

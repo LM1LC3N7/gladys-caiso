@@ -67,10 +67,12 @@ test('the grid: the Outlook read at once, every value once, in the units of the 
   assert.deepEqual(ctx.valuesOf(GRID('co2')), [6600]);
   assert.deepEqual(ctx.valuesOf(GRID('alert_level')), [0]);
   assert.deepEqual(ctx.valuesOf(GRID('conditions')), ['Normal']);
-  assert.deepEqual(ctx.valuesOf(GRID('status')), ['Relevé du 29/10 22:55 (heure du Pacifique)']);
+  assert.deepEqual(ctx.valuesOf(GRID('status')), ['Relevé du 29/10 22:55 PDT']);
   for (const state of ctx.gladys.fake.states) assert.equal(state.created_at, undefined);
   assert.equal(ctx.status().connected, true);
-  assert.equal(ctx.status().message, undefined);
+  // Only the note on where the alert level comes from.
+  assert.match(statusText(ctx), /^Niveau d'alerte tiré du champ gridstatus de stats\.txt/);
+  assert.match(ctx.status().message.en, /caiso\.com\/emergency-notifications$/);
   // The next read sends back the ETag; a new slot is a new reading.
   await ctx.wait(5 * MINUTE);
   assert.equal(ctx.sources.count('outlook'), 2);
@@ -98,7 +100,7 @@ test('the hubs: one OASIS query for the three, the price of the current interval
   assert.deepEqual(ctx.valuesOf(HUB('sp15')), [-12.5 + (at - NOW) / 1e6]);
   assert.equal(ctx.valuesOf(HUB('zp26')).length, 1);
   assert.deepEqual(ctx.valuesOf(HUB('np15', 'status')), [
-    'Prix de gros, pas votre tarif ; intervalle 29/10 23:00-23:05 (heure du Pacifique)',
+    'Prix de gros, pas votre tarif ; intervalle 29/10 23:00-23:05 PDT',
   ]);
   assert.equal(ctx.status().connected, true);
   assert.match(statusText(ctx), /prix de gros du marché, pas votre tarif/);
@@ -179,9 +181,12 @@ test('unreadable values and unknown conditions: never published, never 0; the wo
   assert.deepEqual(ctx.valuesOf(GRID('conditions')), ['Grid Warning']);
   assert.equal(
     ctx.valuesOf(GRID('status')).at(-1),
-    'Reading of 10/29 22:55 (Pacific time); not published: demand; conditions not recognized, no alert level',
+    'Reading of 10/29 22:55 PDT; not published: demand; no alert level recognized',
   );
-  assert.match(ctx.status().message.en, /grid conditions not recognized: alert level unknown/);
+  assert.match(
+    ctx.status().message.en,
+    /grid conditions not recognized, left out of the alert level: "Grid Warning"/,
+  );
   assert.equal(ctx.status().connected, true);
 });
 
@@ -613,7 +618,11 @@ test('/data unreadable whose setting aside never ends: the start goes on (bounde
   assert.equal(ctx.sources.count('outlook'), 1);
   assert.equal(ctx.valuesOf(GRID('demand')).length, 1);
   assert.equal(store.saves, 0);
-  assert.match(statusText(ctx), /\/data non inscriptible/);
+  assert.match(
+    statusText(ctx),
+    /\/data illisible et impossible à mettre de côté : rien n’y est écrit/,
+  );
+  assert.doesNotMatch(statusText(ctx), /fichier mis de côté/);
 });
 
 test('/data unreadable: set aside, never overwritten; /data that cannot be written: said', async () => {
@@ -623,8 +632,8 @@ test('/data unreadable: set aside, never overwritten; /data that cannot be writt
   const ctx = await setup({ store, devices: 'grid' });
   await ctx.begin();
   assert.equal(store.saves, 0, 'never written over');
-  assert.match(statusText(ctx), /\/data illisible/);
-  assert.match(statusText(ctx), /\/data non inscriptible/);
+  assert.match(statusText(ctx), /\/data illisible et impossible à mettre de côté/);
+  assert.doesNotMatch(statusText(ctx), /fichier mis de côté/);
   const other = createMemoryStore();
   other.failSave = true;
   const ctx2 = await setup({ store: other, devices: 'grid' });

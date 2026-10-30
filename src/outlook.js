@@ -106,30 +106,60 @@ export function parseOutlook(text, anchor) {
 }
 
 /**
- * The grid conditions -> an alert level, from the words the ISO uses. Any
- * text not recognized makes the level unknown (never a lower level).
+ * The grid conditions -> an alert level, from the seven notices of the ISO
+ * (Grid Emergencies History Report: Flex Alert, RMO, Transmission Emergency,
+ * EEA Watch, EEA1, EEA2, EEA3) and "Normal". Each entry is matched whole
+ * (case and spaces folded; "EEA 1" and "EEA1" alike; a suffix after a dash,
+ * as in "EEA 3 - Load shed", is ignored unless it says the notice ended):
  *   0 normal, 1 Restricted Maintenance Operations, 2 Flex Alert,
  *   3 EEA Watch, 4 EEA 1, 5 EEA 2, 6 EEA 3.
+ * The level is the highest entry recognized. "Transmission Emergency" (a
+ * regional notice, it says nothing of the supply of the whole grid) is
+ * recognized but has no level: it never hides an EEA nor lowers the level.
+ * An entry not recognized (a new wording, "EEA 3 cancelled") is set aside and
+ * named in the status; with no entry carrying a level, the level is unknown.
  */
 export const LEVELS = ['normal', 'rmo', 'flex_alert', 'eea_watch', 'eea1', 'eea2', 'eea3'];
 
-export function levelOf(conditions) {
-  if (!Array.isArray(conditions) || conditions.length === 0) return undefined;
-  let level = 0;
-  for (const item of conditions) {
-    const one = levelOfOne(item);
-    if (one === undefined) return undefined;
-    level = Math.max(level, one);
-  }
-  return level;
-}
+/** Words that say a notice is over: such an entry is never taken as active. */
+const ENDED =
+  /\b(cancel+ed|cancel+ation|expired|ended|lifted|terminated|rescinded|over|no longer)\b/;
 
-function levelOfOne(text) {
-  const t = text.toLowerCase();
-  if (/^normal$/.test(t)) return 0;
-  const eea = /\b(?:eea|energy emergency alert)\b\s*(?:level\s*)?(watch|[123])\b/.exec(t);
-  if (eea) return eea[1] === 'watch' ? 3 : 3 + Number(eea[1]);
-  if (/\bflex\s*alert\b/.test(t)) return 2;
-  if (/\brestricted maintenance operations?\b/.test(t)) return 1;
+/**
+ * One entry -> { level } (0-6), { flag: 'transmission_emergency' } or undefined.
+ */
+export function entryOf(text) {
+  if (typeof text !== 'string') return undefined;
+  let t = text.toLowerCase().replace(/\s+/g, ' ').trim();
+  if (ENDED.test(t)) return undefined;
+  // "EEA 3 - Load shed": the part after a dash is a comment.
+  t = t.replace(/\s+[-–—]\s+.*$/, '');
+  if (t === 'normal') return { level: 0 };
+  if (t === 'restricted maintenance operations' || t === 'rmo') return { level: 1 };
+  if (t === 'flex alert') return { level: 2 };
+  if (t === 'transmission emergency') return { flag: 'transmission_emergency' };
+  const eea =
+    /^(?:eea|energy emergency alert)(?: level)? ?(watch|[123])(?: \((?:eea ?(?:watch|[123]))\))?$/.exec(
+      t,
+    );
+  if (eea) return { level: eea[1] === 'watch' ? 3 : 3 + Number(eea[1]) };
   return undefined;
 }
+
+/**
+ * @returns {{ level: number | undefined, unknown: string[], transmission: boolean }}
+ */
+export function classify(conditions) {
+  const out = { level: undefined, unknown: [], transmission: false };
+  if (!Array.isArray(conditions)) return out;
+  for (const item of conditions) {
+    const entry = entryOf(item);
+    if (!entry) out.unknown.push(String(item));
+    else if (entry.flag) out.transmission = true;
+    else out.level = Math.max(out.level ?? 0, entry.level);
+  }
+  return out;
+}
+
+/** The level alone (undefined when no entry carries one). */
+export const levelOf = (conditions) => classify(conditions).level;

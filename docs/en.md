@@ -65,47 +65,63 @@ and they never enter the energy dashboards of Gladys.
 
 One OASIS query reads the three hubs at once (the ISO allows one request
 every 5 seconds; the integration never sends two less than the interval
-apart). The answer holds the interval running and the next one or two: when a
-new interval starts between two reads, its price (already received) is
-published at once, without a request.
+apart). The answer always holds the interval running, and at times the next
+one when the ISO has already settled it: such a next interval is published at
+its start, without a request. A price is shown for 10 minutes after its
+interval ends: **with a read interval of 30 to 60 minutes, the price is
+"stale" most of the time; keep 5 minutes (the default) for the prices.**
 
 ## Freshness: nothing old shown as new, never 0 for an unknown
 
 - A value is published **once per reading of the source**, only while it is
   fresh: a reading of Today's Outlook at most **20 minutes** old (its own
   time, turned into UTC with the Last-Modified of the file), a price whose
-  interval ended at most **10 minutes** ago (OASIS times are UTC).
+  interval ended at most **10 minutes** ago (OASIS times are UTC). The age is
+  counted from the server time plus the `Age` a cache (CloudFront) adds: a
+  copy kept for hours by a cache is stale, never fresh.
 - A missing, unreadable, out of range or stale value is **never published**,
   and never as 0: the "Data status" text and the integration status say so
-  ("Stale, nothing published: last reading of 10/29 22:55 (Pacific time)",
+  ("Stale, nothing published: last reading of 10/29 22:55 PDT",
   "not published: demand"). The texts are updated when a reading turns stale
   even without a new read.
 - After a restart, nothing is published before a new reading (a reading
   already published before the restart is never sent again).
 - Times are Pacific times (the ISO's), turned into UTC exactly across the
-  changes of time; in the hour repeated in November, a time without the
-  Last-Modified of its file is unreadable (never a guess).
+  changes of time, shown with PDT or PST (the hour repeated in November reads
+  twice, told apart); in that hour, a time without the Last-Modified of its
+  file is unreadable (never a guess).
 
 ## Grid conditions and alert level
 
-The grid conditions are the `gridstatus` list of Today's Outlook (the line
-"Grid conditions" of the ISO's page). The integration recognizes these words
-(case ignored) and turns them into a level:
+The grid conditions are the `gridstatus` list of `stats.txt`. **The ISO's
+Today's Outlook page no longer shows this field** (since November 2023 it
+shows the notices of another service, not documented as an open feed): it is
+still in the file, but it **may lag behind a notice, or miss it**. The
+reference for the emergency notices is the ISO's page
+<https://www.caiso.com/emergency-notifications>. The status says it.
 
-| Level | Conditions                                           |
-| ----- | ---------------------------------------------------- |
-| 0     | Normal                                               |
-| 1     | Restricted Maintenance Operations                    |
-| 2     | Flex Alert                                           |
-| 3     | EEA Watch (Energy Emergency Alert Watch)             |
-| 4-6   | EEA 1, EEA 2, EEA 3 (Energy Emergency Alert 1, 2, 3) |
+Each entry is matched whole (case and spaces ignored, "EEA 1" or "EEA1"; a
+comment after a dash, as in "EEA 3 - Load shed", is ignored) against the
+seven notices of the ISO and "Normal":
 
-Several conditions at once: the highest level. **Any word not recognized makes
-the level unknown**: the level is not published (never a lower one), the
-words of the ISO are still published in "Grid conditions", and the status says
-"conditions not recognized". The exact wording of an EEA in this file could
-not be checked (none happened while the integration was written); the ISO also
-announces them by its own notices, which remain the reference.
+| Level | Conditions                                                  |
+| ----- | ----------------------------------------------------------- |
+| 0     | Normal                                                      |
+| 1     | Restricted Maintenance Operations (RMO)                     |
+| 2     | Flex Alert                                                  |
+| 3     | EEA Watch (Energy Emergency Alert Watch)                    |
+| 4-6   | EEA 1, EEA 2, EEA 3 (Energy Emergency Alert 1, 2, 3; EEA1…) |
+| none  | Transmission Emergency                                      |
+
+The level is the **highest entry recognized**: on 6 September 2022 the list
+"EEA 3, EEA 2, EEA 1, EEA Watch, Flex Alert, Restricted Maintenance
+Operations, Transmission Emergency" gives 6. "Transmission Emergency" is a
+regional notice: it is shown in "Grid conditions" and never changes the
+level. An entry not recognized (a new wording, or one saying the notice ended,
+as "EEA 3 cancelled") is left out of the level and named in the status; when
+no entry carries a level, the level is unknown and not published: Gladys then
+keeps showing the last level published, the "Grid conditions" text and the
+status say what the ISO wrote.
 
 ## Scene triggers
 
@@ -142,15 +158,18 @@ feature works with the usual device triggers of Gladys.
 - The status is "connected" only when a source answered and holds fresh data
   (right after a restart, before the first read is due: when a source read
   fine within the interval before the restart).
-  It lists, in English and French: the source unreachable, paused, refused,
-  stale, values not published, conditions not recognized, OASIS "no data" or
-  an OASIS error code, /data not readable or not writable, and "prices are
-  wholesale market prices, not your retail rate".
+  It lists, in English and French: the source unreachable, paused (also right
+  after a restart, with its cause), refused, stale, values not published,
+  conditions not recognized (quoted), OASIS "no data" or an OASIS error code,
+  /data not readable, not writable or not answering, where the alert level
+  comes from, and "prices are wholesale market prices, not your retail rate".
 - `getConfig` failing at a connection to Gladys: tried again after 5 s, doubled
   up to 5 minutes, without end; the status says so.
 - /data (the pace, the pauses, what was published, the trigger states): each
-  wait is bounded (5 s); a file that cannot be read is set aside, never
-  overwritten, and said. **While /data cannot be written** (said in the
+  wait is bounded (5 s), one save at a time (a save that hangs is said, and
+  the next ones fold into one instead of piling up); a file that cannot be
+  read is set aside, never overwritten, and said (and if it cannot even be set
+  aside, nothing is written to /data). **While /data cannot be written** (said in the
   status), all of this lives in memory only: a restart then reads at once,
   may publish the last reading again and may fire a trigger again; the
   promises about restarts above hold only while /data can be written.

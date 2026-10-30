@@ -55,7 +55,7 @@ import { TEXT_KEYS, VALUE_KEYS, allDevices, idsOf, parseDeviceId } from './devic
 import { FetchError, getBody } from './http.js';
 import { T, gridStatus, hubStatus, joinMessages, problemText } from './i18n.js';
 import { oasisQuery, parseOasis, priceAt } from './oasis.js';
-import { FormatError, LEVELS, levelOf, parseOutlook } from './outlook.js';
+import { FormatError, LEVELS, classify, parseOutlook } from './outlook.js';
 import { createFileStore } from './store.js';
 
 const defaultTimers = { setTimeout, clearTimeout };
@@ -156,6 +156,10 @@ export class CaisoApp {
     this.publishRun = Promise.resolve();
     this.discoveryKey = undefined;
     this.saveFailed = false;
+    /** The save running (one at a time), whether another is asked, whether it hangs. */
+    this.saving = undefined;
+    this.saveAgain = false;
+    this.saveStuck = false;
     /**
      * Per source: when it was last asked (monotonic and wall), its pause after
      * a 429/5xx, the outcome of the last attempt, the data read (memory only),
@@ -513,9 +517,13 @@ export class CaisoApp {
     const at = this.monotonic();
     const wall = this.now();
     s.pause = undefined;
-    // The reference "now" of the source: its Date header, when close to ours.
+    // The reference "now" of the source: its Date header, when close to ours,
+    // plus the Age a cache (CloudFront) adds: a copy kept by a cache is as old
+    // as Date + Age says, never as fresh as the moment it was served.
     const ref =
-      finite(answer.date) && Math.abs(answer.date - wall) <= DATE_HEADER_TRUST ? answer.date : wall;
+      finite(answer.date) && Math.abs(answer.date - wall) <= DATE_HEADER_TRUST
+        ? answer.date + (answer.age ?? 0)
+        : wall;
     if (answer.status === 304) {
       if (s.data) {
         // Not modified: the reading keeps its dates (its age grows on the monotonic clock).
@@ -595,7 +603,7 @@ export class CaisoApp {
       if (fresh(value.stamp)) shown[key] = value;
       else left.push(key);
     }
-    const level = levelOf(conditions);
+    const { level, unknown, transmission } = classify(conditions);
     if (level !== undefined) shown.alert_level = { value: level, stamp: slot };
     return {
       code: 'fresh',
@@ -604,7 +612,9 @@ export class CaisoApp {
       conditions,
       level,
       missing: left,
-      unknownLevel: conditions !== undefined && level === undefined,
+      unknown: conditions === undefined ? [] : unknown,
+      noLevel: conditions !== undefined && level === undefined,
+      transmission,
     };
   }
 
@@ -681,6 +691,9 @@ export class CaisoApp {
 
   async doPublish() {
     if (!this.running) return;
+    // Stopped meanwhile (a stop, a disconnection): nothing more leaves.
+    const gen = this.run;
+    const live = () => gen === this.run && this.running;
     const mono = this.monotonic();
     const language = this.config.language;
     const values = [];
@@ -740,6 +753,7 @@ export class CaisoApp {
         return;
       }
     }
+    if (!live()) return;
     if (texts.length > 0) {
       for (const t of texts) this.sentTexts.set(t.fid, t.text);
       try {
@@ -754,6 +768,7 @@ export class CaisoApp {
       }
     }
     for (const event of events) {
+      if (!live()) return;
       try {
         await this.gladys.publishSceneEvent(event.key, event.data);
         event.commit();
@@ -865,8 +880,10 @@ export class CaisoApp {
     const needed = this.neededSources(devices);
     const parts = [];
     for (const note of this.config.notes) parts.push(T.notes[note]);
-    if (this.dataUnreadable) parts.push(T.dataUnreadable);
-    if (this.saveFailed || this.dataBlocked) parts.push(T.dataUnwritable);
+    if (this.dataUnreadable) parts.push(this.dataBlocked ? T.dataBlocked : T.dataUnreadable);
+    if (this.saveStuck) parts.push(T.dataStuck);
+    else if (this.saveFailed || (this.dataBlocked && !this.dataUnreadable))
+      parts.push(T.dataUnwritable);
     if (needed.size === 0) {
       parts.unshift(T.noDevice);
       await this.setStatus(false, joinMessages(parts));
@@ -885,6 +902,14 @@ export class CaisoApp {
           wall - this.lastOk[source] <= this.intervalMs + 5 * MINUTE,
       );
       parts.unshift(fresh ? T.nextRead(left) : T.waiting(left));
+      // A pause kept across the restart: said with its cause.
+      for (const source of sources) {
+        const pause = this.src[source].pause;
+        if (pause && pause.due > mono) {
+          parts.push(problemText(source, { ...pause, until: pause.due }, mono));
+        }
+      }
+      if (needed.has(SOURCES.OUTLOOK)) parts.push(T.alertSource);
       if (needed.has(SOURCES.OASIS)) parts.push(T.wholesale);
       await this.setStatus(fresh, joinMessages(parts));
       return;
@@ -906,9 +931,12 @@ export class CaisoApp {
       if (source === SOURCES.OUTLOOK && fresh) {
         const view = this.gridView(mono);
         if (view.missing.length > 0) parts.push(problemText(source, { code: 'partial' }, mono));
-        if (view.unknownLevel) parts.push(problemText(source, { code: 'unknown_level' }, mono));
+        if (view.unknown.length > 0 || view.noLevel) {
+          parts.push(problemText(source, { code: 'unknown_level', words: view.unknown }, mono));
+        }
       }
     }
+    if (needed.has(SOURCES.OUTLOOK)) parts.push(T.alertSource);
     if (needed.has(SOURCES.OASIS)) parts.push(T.wholesale);
     await this.setStatus(connected, joinMessages(parts));
   }
@@ -926,9 +954,8 @@ export class CaisoApp {
 
   // --- /data ---------------------------------------------------------------------------
 
-  /** Writes /data, awaited SAVE_WAIT at most (the save goes on in the background). */
-  async saveState() {
-    if (!this.loaded || this.dataBlocked) return false;
+  /** What /data keeps, now. */
+  stateSnapshot() {
     const pauses = {};
     const asked = {};
     for (const [source, s] of Object.entries(this.src)) {
@@ -942,27 +969,62 @@ export class CaisoApp {
       }
       if (s.askedWall !== undefined) asked[source] = s.askedWall;
     }
-    const data = {
+    return structuredClone({
       v: 1,
       asked,
       pauses,
       published: Object.fromEntries(this.published),
       triggers: this.triggers,
       lastOk: { ...this.lastOk },
-    };
-    const job = Promise.resolve()
-      .then(() => this.store.save(structuredClone(data)))
-      .then(
-        () => {
-          this.saveFailed = false;
-          return true;
-        },
-        (err) => {
-          this.saveFailed = true;
-          this.logger.warn(`/data not written (${err?.code ?? err?.name ?? 'Error'})`);
-          return false;
-        },
-      );
-    return this.bounded(job, false);
+    });
+  }
+
+  /**
+   * Writes /data, awaited SAVE_WAIT at most. One save at a time: a save
+   * asked while one runs is folded into a single next one (with the state of
+   * that moment), never queued without end. A save that outlives SAVE_WAIT
+   * is said in the status ("/data does not answer"); while it hangs, the
+   * next saves are not awaited at all.
+   */
+  saveState() {
+    if (!this.loaded || this.dataBlocked) return Promise.resolve(false);
+    if (this.saving) {
+      this.saveAgain = true;
+      if (this.saveStuck) return Promise.resolve(false);
+      return this.awaitSave();
+    }
+    this.saving = this.saveLoop().finally(() => {
+      this.saving = undefined;
+      this.saveStuck = false;
+    });
+    return this.awaitSave();
+  }
+
+  async awaitSave() {
+    const LATE = Symbol('late');
+    const done = await this.bounded(this.saving ?? Promise.resolve(true), LATE);
+    if (done !== LATE) return done;
+    if (!this.saveStuck) {
+      this.saveStuck = true;
+      this.logger.warn('/data does not answer');
+    }
+    return false;
+  }
+
+  async saveLoop() {
+    let ok;
+    do {
+      this.saveAgain = false;
+      try {
+        await this.store.save(this.stateSnapshot());
+        this.saveFailed = false;
+        ok = true;
+      } catch (err) {
+        this.saveFailed = true;
+        this.logger.warn(`/data not written (${err?.code ?? err?.name ?? 'Error'})`);
+        ok = false;
+      }
+    } while (this.saveAgain);
+    return ok;
   }
 }

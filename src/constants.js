@@ -4,7 +4,25 @@
 // and options) is forever: never rename one.
 // -----------------------------------------------------------------------------
 
-export const VERSION = '0.1.0';
+import { readFileSync } from 'node:fs';
+
+/**
+ * The version of package.json (shipped in the image), read at start: the
+ * Release workflow bumps package.json, the lock and the manifest, never this
+ * file, so a hard-coded version would lag behind and break the CI.
+ */
+function packageVersion() {
+  try {
+    const { version } = JSON.parse(
+      readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+    );
+    return /^\d{1,4}\.\d{1,4}\.\d{1,6}$/.test(version) ? version : '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
+export const VERSION = packageVersion();
 /** Honest User-Agent, in the name of the integration (never a browser's). */
 export const USER_AGENT = `gladys-caiso/${VERSION} (+https://github.com/LM1LC3N7/gladys-caiso)`;
 

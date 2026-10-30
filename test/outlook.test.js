@@ -6,7 +6,15 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { FormatError, LEVELS, levelOf, parseOutlook, strictNumber } from '../src/outlook.js';
+import {
+  FormatError,
+  LEVELS,
+  classify,
+  entryOf,
+  levelOf,
+  parseOutlook,
+  strictNumber,
+} from '../src/outlook.js';
 import { outlookBody } from './helpers/app.js';
 
 const SLOT = Date.UTC(2026, 9, 30, 5, 55);
@@ -123,22 +131,66 @@ test('the grid conditions: printable, bounded; anything else is missing (never "
   assert.equal(parse({ drop: ['gridstatus'] }).conditions, undefined);
 });
 
-test('alert levels from the words of the ISO; any word not known makes the level unknown', () => {
+test('alert levels: the real lists of the September 2022 emergency, the highest entry recognized', () => {
+  // The words of stats.txt `gridstatus` in the Wayback captures of 5 and 6 September 2022.
+  const real = [
+    [['EEA 1', 'EEA Watch', 'Flex Alert', 'Restricted Maintenance Operations'], 4],
+    [
+      [
+        'EEA 2',
+        'EEA 1',
+        'EEA Watch',
+        'Flex Alert',
+        'Restricted Maintenance Operations',
+        'Transmission Emergency',
+      ],
+      5,
+    ],
+    [['Restricted Maintenance Operations', 'Transmission Emergency'], 1],
+    [
+      [
+        'EEA 3',
+        'EEA 2',
+        'EEA 1',
+        'EEA Watch',
+        'Flex Alert',
+        'Restricted Maintenance Operations',
+        'Transmission Emergency',
+      ],
+      6,
+    ],
+  ];
+  for (const [list, level] of real) {
+    assert.equal(levelOf(list), level, JSON.stringify(list));
+    assert.deepEqual(classify(list).unknown, []);
+  }
+  assert.equal(classify(real[1][0]).transmission, true);
+});
+
+test('alert levels: each entry matched whole; spaces and case folded; an ended notice never active', () => {
   const cases = [
     [['Normal'], 0],
-    [['Restricted Maintenance Operations'], 1],
+    [[' normal '], 0],
+    [['RMO'], 1],
     [['Flex Alert'], 2],
+    [['flex  alert'], 2],
     [['EEA Watch'], 3],
     [['Energy Emergency Alert Watch'], 3],
-    [['EEA 1'], 4],
+    [['EEA1'], 4],
+    [['EEA 2'], 5],
     [['EEA Level 2'], 5],
-    [['Energy Emergency Alert 3'], 6],
-    [['Flex Alert', 'Restricted Maintenance Operations'], 2],
-    [['Restricted Maintenance Operations', 'EEA 2'], 5],
-    [['normal'], 0],
-    [['Normal', 'Grid Warning'], undefined],
-    [['Grid Warning'], undefined],
+    [['EEA3'], 6],
+    [['Energy Emergency Alert 1 (EEA1)'], 4],
+    [['EEA 3 - Load shed'], 6],
+    [['EEA 3 \u2013 rotating outages'], 6],
+    // Transmission Emergency carries no level: alone, the level is unknown.
+    [['Transmission Emergency'], undefined],
+    [['EEA 3 cancelled'], undefined],
+    [['EEA 3 - cancelled'], undefined],
+    [['Flex Alert expired'], undefined],
+    [['No Flex Alert'], undefined],
     [['Not Normal'], undefined],
+    [['EEA Watch upgraded to EEA 2'], undefined],
     [['EEA 4'], undefined],
     [[], undefined],
     [undefined, undefined],
@@ -147,4 +199,18 @@ test('alert levels from the words of the ISO; any word not known makes the level
     assert.equal(levelOf(conditions), level, JSON.stringify(conditions));
   }
   assert.deepEqual(LEVELS, ['normal', 'rmo', 'flex_alert', 'eea_watch', 'eea1', 'eea2', 'eea3']);
+});
+
+test('alert levels: an entry not recognized is named and left out, never lowering the others', () => {
+  assert.deepEqual(classify(['Normal', 'Grid Warning']), {
+    level: 0,
+    unknown: ['Grid Warning'],
+    transmission: false,
+  });
+  assert.deepEqual(classify(['EEA 2', 'EEA 3 cancelled']), {
+    level: 5,
+    unknown: ['EEA 3 cancelled'],
+    transmission: false,
+  });
+  assert.equal(entryOf(42), undefined);
 });

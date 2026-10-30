@@ -6,11 +6,19 @@
 // -----------------------------------------------------------------------------
 
 import { MAX_STATUS_LENGTH } from './constants.js';
-import { pacificClock, pacificText } from './pacific.js';
+import { pacificClock, pacificText, pacificZone } from './pacific.js';
 
 const minutes = (ms) => Math.max(1, Math.ceil(ms / 60_000));
 const seconds = (ms) => Math.max(1, Math.ceil(ms / 1000));
-const bound = (text) => (text.length > MAX_STATUS_LENGTH ? text.slice(0, MAX_STATUS_LENGTH) : text);
+/** A text cut to MAX_STATUS_LENGTH at a space, never inside a word, an ellipsis said. */
+export function bound(text, max = MAX_STATUS_LENGTH) {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max - 1);
+  const space = cut.lastIndexOf(' ');
+  return `${(space > 0 ? cut.slice(0, space) : cut).replace(/[\s;,:]+$/, '')}…`;
+}
+/** The same for a { en, fr } message. */
+const boundBoth = (message, max) => ({ en: bound(message.en, max), fr: bound(message.fr, max) });
 
 /** Feature names, by language and key. */
 export const FEATURE_NAMES = {
@@ -74,28 +82,30 @@ const KEY_NAMES = {
 
 /**
  * The status text of the grid device.
- * @param {{ code: 'fresh'|'stale', slot: number, missing?: string[], unknownLevel?: boolean }} view
+ * @param {{ code: 'fresh'|'stale', slot: number, missing?: string[], unknown?: string[],
+ *   noLevel?: boolean }} view
  */
 export function gridStatus(language, view) {
   const fr = language === 'fr';
-  const at = pacificText(view.slot, language);
+  // PDT or PST: the repeated hour of November reads twice, told apart.
+  const at = `${pacificText(view.slot, language)} ${pacificZone(view.slot)}`;
   if (view.code === 'stale') {
     return bound(
       fr
-        ? `Périmé, rien publié : dernier relevé du ${at} (heure du Pacifique)`
-        : `Stale, nothing published: last reading of ${at} (Pacific time)`,
+        ? `Périmé, rien publié : dernier relevé du ${at}`
+        : `Stale, nothing published: last reading of ${at}`,
     );
   }
-  let text = fr ? `Relevé du ${at} (heure du Pacifique)` : `Reading of ${at} (Pacific time)`;
+  let text = fr ? `Relevé du ${at}` : `Reading of ${at}`;
   const names = KEY_NAMES[fr ? 'fr' : 'en'];
   const missing = (view.missing ?? []).map((key) => names[key] ?? key);
   if (missing.length > 0) {
     text += fr ? ` ; non publié : ${missing.join(', ')}` : `; not published: ${missing.join(', ')}`;
   }
-  if (view.unknownLevel) {
-    text += fr
-      ? " ; conditions non reconnues, pas de niveau d'alerte"
-      : '; conditions not recognized, no alert level';
+  if (view.noLevel) {
+    text += fr ? " ; pas de niveau d'alerte reconnu" : '; no alert level recognized';
+  } else if ((view.unknown ?? []).length > 0) {
+    text += fr ? ' ; conditions non reconnues ignorées' : '; conditions not recognized, left out';
   }
   return bound(text);
 }
@@ -111,18 +121,18 @@ export function hubStatus(language, view) {
       ? 'Aucun prix publié par OASIS pour cet intervalle : rien publié'
       : 'No price published by OASIS for this interval: nothing published';
   }
-  const span = `${pacificText(view.start, language)}-${pacificClock(view.end)}`;
+  const span = `${pacificText(view.start, language)}-${pacificClock(view.end)} ${pacificZone(view.start)}`;
   if (view.code === 'stale') {
     return bound(
       fr
-        ? `Périmé, rien publié : dernier intervalle ${span} (heure du Pacifique)`
-        : `Stale, nothing published: last interval ${span} (Pacific time)`,
+        ? `Périmé, rien publié : dernier intervalle ${span}`
+        : `Stale, nothing published: last interval ${span}`,
     );
   }
   return bound(
     fr
-      ? `Prix de gros, pas votre tarif ; intervalle ${span} (heure du Pacifique)`
-      : `Wholesale price, not your rate; interval ${span} (Pacific time)`,
+      ? `Prix de gros, pas votre tarif ; intervalle ${span}`
+      : `Wholesale price, not your rate; interval ${span}`,
   );
 }
 
@@ -130,6 +140,12 @@ const SOURCE_NAMES = {
   outlook: { en: "Today's Outlook", fr: "Today's Outlook" },
   oasis: { en: 'OASIS prices', fr: 'prix OASIS' },
 };
+
+/** Words of the ISO quoted in a status (bounded), or "none". */
+const words = (list) =>
+  Array.isArray(list) && list.length > 0
+    ? list.map((w) => `"${bound(String(w), 40)}"`).join(', ')
+    : '-';
 
 /** What went wrong with one source, both languages. */
 export function problemText(source, problem, now = 0) {
@@ -173,8 +189,8 @@ export function problemText(source, problem, now = 0) {
       fr: 'des valeurs illisibles, non publiées',
     },
     unknown_level: {
-      en: 'grid conditions not recognized: alert level unknown',
-      fr: "conditions du réseau non reconnues : niveau d'alerte inconnu",
+      en: `grid conditions not recognized, left out of the alert level: ${words(problem.words)}`,
+      fr: `conditions du réseau non reconnues, hors du niveau d'alerte : ${words(problem.words)}`,
     },
   };
   const what = texts[problem.code] ?? { en: 'read failed', fr: 'lecture en échec' };
@@ -220,6 +236,18 @@ export const T = {
     en: '/data could not be read: the file was set aside; the pace and the triggers start again from scratch',
     fr: '/data illisible : fichier mis de côté ; le rythme et les déclencheurs repartent de zéro',
   },
+  dataBlocked: {
+    en: '/data could not be read nor set aside: nothing is written to it; the pace and the triggers live in memory only',
+    fr: '/data illisible et impossible à mettre de côté : rien n’y est écrit ; le rythme et les déclencheurs ne vivent qu’en mémoire',
+  },
+  dataStuck: {
+    en: '/data does not answer, it cannot be written for now (a save still running): the pace and the readings published are kept in memory meanwhile',
+    fr: '/data ne répond pas, il ne peut pas être écrit pour l’instant (une sauvegarde toujours en cours) : le rythme et les relevés publiés restent en mémoire en attendant',
+  },
+  alertSource: {
+    en: 'Alert level from the gridstatus field of stats.txt, which the CAISO page no longer shows: it may lag or miss a notice; the reference is caiso.com/emergency-notifications',
+    fr: "Niveau d'alerte tiré du champ gridstatus de stats.txt, que la page de CAISO n'affiche plus : il peut être en retard ou manquer un avis ; la référence est caiso.com/emergency-notifications",
+  },
   dataUnwritable: {
     en: '/data cannot be written: the pace and the readings published are kept in memory only',
     fr: '/data non inscriptible : le rythme et les relevés publiés ne sont gardés qu’en mémoire',
@@ -230,5 +258,5 @@ export const T = {
 export function joinMessages(parts) {
   if (parts.length === 0) return undefined;
   const join = (lang) => parts.map((p) => p[lang]).join(lang === 'fr' ? ' ; ' : '; ');
-  return { en: join('en').slice(0, 500), fr: join('fr').slice(0, 500) };
+  return boundBoth({ en: join('en'), fr: join('fr') }, 500);
 }

@@ -114,6 +114,11 @@ export function pacificText(utc, language) {
   return language === 'fr' ? `${day}/${month} ${time}` : `${month}/${day} ${time}`;
 }
 
+/** "PDT" or "PST": the zone in force at an instant. */
+export function pacificZone(utc) {
+  return toLocal(utc) - Math.floor(utc / 1000) * 1000 === -7 * 3600 * 1000 ? 'PDT' : 'PST';
+}
+
 /** "22:55": the local time only. */
 export function pacificClock(utc) {
   const d = new Date(toLocal(utc));

@@ -45,10 +45,17 @@ export function parseRetryAfter(value, serverDate) {
   return undefined;
 }
 
+/** `Age` of a cache in ms (whole seconds, at most a day), else 0. */
+export function parseAge(value) {
+  if (typeof value !== 'string' || !/^\d{1,10}$/.test(value.trim())) return 0;
+  return Math.min(Number(value.trim()) * 1000, 24 * 60 * 60 * 1000);
+}
+
 /**
  * GET `url`. Resolves `{ status: 200, text | bytes, etag, lastModified, date }`
  * or `{ status: 304, date }`; throws a FetchError otherwise. `date` and
- * `lastModifiedAt` are epoch ms (NaN when absent or unreadable).
+ * `lastModifiedAt` are epoch ms (NaN when absent or unreadable); `age` the
+ * `Age` header of a cache in ms (0 when absent).
  * @param {{ url: string, accept: string, maxBytes: number, etag?: string,
  *   lastModified?: string, signal?: AbortSignal, fetchImpl?: typeof fetch,
  *   timeout?: number, timers?: object, binary?: boolean }} options
@@ -97,6 +104,7 @@ export async function getBody({
       throw fail(err);
     }
     const date = Date.parse(response.headers.get('date') ?? '');
+    const age = parseAge(response.headers.get('age') ?? undefined);
     const status = response.status;
     if (status === 304) {
       await response.body?.cancel().catch(() => {});
@@ -149,6 +157,7 @@ export async function getBody({
       lastModified: modified,
       lastModifiedAt: modified === undefined ? NaN : Date.parse(modified),
       date,
+      age,
     };
   } finally {
     timers.clearTimeout(timer);

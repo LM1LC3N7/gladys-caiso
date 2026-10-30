@@ -8,25 +8,33 @@
 
 ## To watch on the real files
 
-- [ ] The wording of the grid conditions beyond "Normal" (the only one seen on
-      2026-10-30). Recognized: Normal, Restricted Maintenance Operations,
-      Flex Alert, EEA Watch / Energy Emergency Alert Watch, EEA 1-3 / Energy
-      Emergency Alert 1-3 (EEA Level n). Anything else makes the level
-      unknown (not published, said); the words are still published. Check the
-      next real Flex Alert or EEA, and whether the ISO has a machine-readable
-      notice feed worth adding.
+- [ ] The grid conditions: `gridstatus` of stats.txt is no longer shown by
+      the ISO's page (since `outlook.js` v1.12, November 2023, the page reads
+      `wwwmobile.caiso.com/TodaysOutlookApi/api/EmergencyNotices/v2/ActiveEvents`,
+      an API of the ISO's site and app, not documented nor presented as an
+      open feed: not used, no imitation of the app). The field may lag or miss
+      a notice: said in the docs and the status, with
+      caiso.com/emergency-notifications as the reference. Recognized (whole
+      entries, review r1): Normal, RMO, Flex Alert, Transmission Emergency (no
+      level), EEA Watch, EEA 1-3 (EEA1, Energy Emergency Alert n, a dash
+      comment); the four lists of 5-6 September 2022 (Wayback) give 4, 5, 1, 6.
+      Ask the ISO whether ActiveEvents may be used as an open feed; if so, read
+      it as the main source of the level.
 - [ ] `renewablesPercent` vs `renewablesPercentwoBatteries` (equal on
       2026-10-30, both without batteries at that time). The first one is used.
 - [ ] The OASIS error codes besides 1000 ("No data returned"): a 429 is an
       HTTP 429 (seen on 2026-10-30, "retry your request after 5 seconds",
       without Retry-After); other codes are shown as "error <code>".
-- [ ] CloudFront in front of Today's Outlook: answers with `Age` under a
-      minute and a Last-Modified two minutes after the slot on 2026-10-30. A
-      long-cached file would show as stale (by its own times), never as fresh.
+- [ ] CloudFront in front of Today's Outlook: `Age` under a minute and a
+      Last-Modified two minutes after the slot on 2026-10-30. The age of a
+      reading is counted from `Date` + `Age` (review r1): a copy kept by a
+      cache for hours is stale, never fresh (tested with Age 7200 and 1500).
 
 ## Decisions
 
-- Version 0.1.0 set by hand (package.json, lock, manifest, `docker_image`).
+- Version 0.1.0 set by hand (package.json, lock, manifest, `docker_image`). The
+  code reads its version (User-Agent) from package.json at start (review r1:
+  the Release workflow bumps package.json, never `src/constants.js`).
 - SDK `^0.16.0` (the template's; the latest published, checked on the
   registry on 2026-10-30). No other runtime dependency.
 - Manifest: `categories: ["energy", "environment"]` (tariffs and the grid
@@ -95,12 +103,15 @@ dollar` in $/MWh (the native unit, the name says it). Alert level 0-6 is
 
 ## Tests
 
-- Mutation run (86 mutants on the guards of src/, copies in a private
-  temporary folder): all killed but one equivalent, `view.code === 'fresh'`
-  → `view.value !== undefined` for a hub (a hub view only carries a value
-  when fresh). Two lines found doing nothing were removed (a second arming of
-  the timer before the pre-request save, a clear of the texts on a language
-  change that the text comparison already covers).
+- Mutation runs: the dev's (86 mutants) and the reviewer's r1 (102, in
+  `_lots/lot19/reviews/caiso/`). After r1, every survivor that the code can
+  show is killed by a test (`test/guards.test.js`, `test/store.test.js`,
+  `test/version.test.js`). Left, equivalent (no input can tell them apart):
+  `view.code === 'fresh'` -> `view.value !== undefined` for a hub (a hub view
+  carries a value only when fresh); the day check of `naiveOf` (a day out of
+  its month always changes the month too); the `__proto__` key check of
+  /data (a Map key, written back as an own property); `code === 'aborted'` in `failed` (an abort only comes from a stop, which `failed` never sees);
+  the size check before reading /data (the read loop says `too_large` too).
 
 ## Ideas
 

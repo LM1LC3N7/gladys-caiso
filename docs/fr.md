@@ -68,9 +68,11 @@ bord d'énergie de Gladys.
 
 Une seule requête OASIS lit les trois hubs (l'opérateur accepte une requête
 toutes les 5 secondes ; l'intégration n'en envoie jamais deux à moins d'un
-intervalle). La réponse contient l'intervalle en cours et le ou les deux
-suivants : quand un nouvel intervalle commence entre deux lectures, son prix
-(déjà reçu) est publié aussitôt, sans requête.
+intervalle). La réponse contient toujours l'intervalle en cours, et parfois le
+suivant quand l'opérateur l'a déjà fixé : cet intervalle suivant est publié à
+son début, sans requête. Un prix reste montré 10 minutes après la fin de son
+intervalle : **avec un intervalle de lecture de 30 à 60 minutes, le prix est
+« périmé » la plupart du temps ; gardez 5 minutes (le défaut) pour les prix.**
 
 ## Fraîcheur : rien d'ancien montré comme neuf, jamais 0 pour une inconnue
 
@@ -78,39 +80,53 @@ suivants : quand un nouvel intervalle commence entre deux lectures, son prix
   qu'elle est fraîche : un relevé de Today's Outlook de **20 minutes** au plus
   (sa propre heure, passée en UTC grâce au Last-Modified du fichier), un prix
   dont l'intervalle s'est terminé il y a **10 minutes** au plus (les heures
-  d'OASIS sont en UTC).
+  d'OASIS sont en UTC). L'âge se compte depuis l'heure du serveur plus l'`Age`
+  qu'ajoute un cache (CloudFront) : une copie gardée des heures par un cache
+  est périmée, jamais fraîche.
 - Une valeur absente, illisible, hors bornes ou périmée **n'est pas publiée**,
   et jamais comme 0 : le texte « État des données » et l'état de
   l'intégration le disent (« Périmé, rien publié : dernier relevé du 29/10
-  22:55 (heure du Pacifique) », « non publié : demande »). Les textes sont mis
+  22:55 PDT », « non publié : demande »). Les textes sont mis
   à jour quand un relevé devient périmé, même sans nouvelle lecture.
 - Après un redémarrage, rien n'est publié avant un nouveau relevé (un relevé
   déjà publié avant le redémarrage n'est jamais renvoyé).
 - Les heures sont celles du Pacifique (celles de l'opérateur), passées en UTC
-  exactement aux changements d'heure ; dans l'heure répétée de novembre, une
+  exactement aux changements d'heure, affichées avec PDT ou PST (l'heure
+  répétée de novembre se lit deux fois, distinguée) ; dans cette heure, une
   heure sans le Last-Modified de son fichier est illisible (jamais devinée).
 
 ## Conditions du réseau et niveau d'alerte
 
-Les conditions du réseau sont la liste `gridstatus` de Today's Outlook (la
-ligne « Grid conditions » de la page de l'opérateur). L'intégration reconnaît
-ces mots (sans tenir compte des majuscules) et en tire un niveau :
+Les conditions du réseau sont la liste `gridstatus` de `stats.txt`. **La page
+Today's Outlook de l'opérateur n'affiche plus ce champ** (depuis novembre
+2023, elle montre les avis d'un autre service, non documenté comme flux
+ouvert) : il est toujours dans le fichier, mais il **peut être en retard sur
+un avis, ou le manquer**. La référence pour les avis d'urgence est la page de
+l'opérateur <https://www.caiso.com/emergency-notifications>. L'état le dit.
 
-| Niveau | Conditions                                           |
-| ------ | ---------------------------------------------------- |
-| 0      | Normal                                               |
-| 1      | Restricted Maintenance Operations                    |
-| 2      | Flex Alert                                           |
-| 3      | EEA Watch (Energy Emergency Alert Watch)             |
-| 4-6    | EEA 1, EEA 2, EEA 3 (Energy Emergency Alert 1, 2, 3) |
+Chaque élément est comparé en entier (sans tenir compte des majuscules ni des
+espaces, « EEA 1 » ou « EEA1 » ; un commentaire après un tiret, comme dans
+« EEA 3 - Load shed », est ignoré) aux sept avis de l'opérateur et à
+« Normal » :
 
-Plusieurs conditions à la fois : le niveau le plus haut. **Un mot non reconnu
-rend le niveau inconnu** : le niveau n'est pas publié (jamais un niveau plus
-bas), les mots de l'opérateur sont quand même publiés dans « Conditions du
-réseau », et l'état dit « conditions non reconnues ». Le libellé exact d'une
-EEA dans ce fichier n'a pas pu être vérifié (aucune n'a eu lieu pendant
-l'écriture de l'intégration) ; l'opérateur les annonce aussi par ses propres
-avis, qui restent la référence.
+| Niveau | Conditions                                                   |
+| ------ | ------------------------------------------------------------ |
+| 0      | Normal                                                       |
+| 1      | Restricted Maintenance Operations (RMO)                      |
+| 2      | Flex Alert                                                   |
+| 3      | EEA Watch (Energy Emergency Alert Watch)                     |
+| 4-6    | EEA 1, EEA 2, EEA 3 (Energy Emergency Alert 1, 2, 3 ; EEA1…) |
+| aucun  | Transmission Emergency                                       |
+
+Le niveau est **le plus haut des éléments reconnus** : le 6 septembre 2022, la
+liste « EEA 3, EEA 2, EEA 1, EEA Watch, Flex Alert, Restricted Maintenance
+Operations, Transmission Emergency » donne 6. « Transmission Emergency » est un
+avis régional : il apparaît dans « Conditions du réseau » et ne change jamais
+le niveau. Un élément non reconnu (un nouveau libellé, ou un avis dit terminé,
+comme « EEA 3 cancelled ») est laissé hors du niveau et cité dans l'état ;
+quand aucun élément ne porte de niveau, le niveau est inconnu et n'est pas
+publié : Gladys garde alors le dernier niveau publié, le texte « Conditions du
+réseau » et l'état disent ce qu'a écrit l'opérateur.
 
 ## Déclencheurs de scène
 
@@ -149,15 +165,20 @@ fonction de prix marche avec les déclencheurs habituels des appareils Gladys.
 - L'état n'est « connecté » que si une source a répondu et a des données
   fraîches (juste après un redémarrage, avant la première lecture due : si une
   source a été bien lue dans l'intervalle avant le redémarrage). Il liste, en
-  français et en anglais : la source injoignable, en pause, en refus, périmée,
-  des valeurs non publiées, des conditions non reconnues, le « pas de données »
-  ou un code d'erreur d'OASIS, /data illisible ou non inscriptible, et « les
-  prix sont des prix de gros du marché, pas votre tarif ».
+  français et en anglais : la source injoignable, en pause (aussi juste après
+  un redémarrage, avec sa cause), en refus, périmée, des valeurs non publiées,
+  des conditions non reconnues (citées), le « pas de données » ou un code
+  d'erreur d'OASIS, /data illisible, non inscriptible ou qui ne répond pas,
+  d'où vient le niveau d'alerte, et « les prix sont des prix de gros du
+  marché, pas votre tarif ».
 - `getConfig` en échec à une connexion à Gladys : nouvel essai après 5 s,
   doublé jusqu'à 5 minutes, sans fin ; l'état le dit.
 - /data (le rythme, les pauses, ce qui a été publié, l'état des
-  déclencheurs) : chaque attente est bornée (5 s) ; un fichier illisible est
-  mis de côté, jamais écrasé, et c'est dit. **Tant que /data n'est pas
+  déclencheurs) : chaque attente est bornée (5 s), une sauvegarde à la fois
+  (une sauvegarde qui ne répond pas est dite, et les suivantes se fondent en
+  une seule au lieu de s'empiler) ; un fichier illisible est mis de côté,
+  jamais écrasé, et c'est dit (et s'il ne peut même pas être mis de côté, rien
+  n'est écrit dans /data). **Tant que /data n'est pas
   inscriptible** (l'état le dit), tout cela n'est gardé qu'en mémoire : un
   redémarrage lit alors aussitôt, peut republier le dernier relevé et relancer
   un déclencheur ; les promesses sur les redémarrages ci-dessus ne valent que

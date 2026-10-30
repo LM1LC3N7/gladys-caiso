@@ -311,3 +311,253 @@ test('ZIP: a stored file above the cap is refused; a bomb is cut by the inflater
   end.writeUInt32LE(35 + body.length, 16);
   assert.throws(() => unzipOne(Buffer.concat([local, body, central, end]), 1024), /cannot inflate/);
 });
+
+// --- Review r1 -----------------------------------------------------------------------
+
+test('a copy kept by a cache (Date + Age) is as old as it is: 2 h old is stale, never published', async () => {
+  for (const age of [7200, 25 * 60]) {
+    const ctx = await setup({ devices: 'grid' });
+    ctx.world.outlook = () => {
+      const date = ctx.clock.now() - age * SECOND;
+      const slot = slotOf(date - 3 * MINUTE);
+      return answer(outlookBody({ slot }), {
+        date,
+        lastModified: slot + 3 * MINUTE,
+        headers: { age: String(age) },
+      });
+    };
+    await ctx.begin();
+    assert.deepEqual(ctx.valuesOf(GRID('demand')), [], `Age ${age}`);
+    assert.match(ctx.valuesOf(GRID('status')).at(-1), /^Périmé/);
+    assert.equal(ctx.status().connected, false);
+  }
+  // The real CloudFront case: Date 21 s behind, Age 22: fresh.
+  const ctx = await setup({ devices: 'grid' });
+  const live = ctx.world.outlook;
+  ctx.world.outlook = (...args) => {
+    const r = live(...args);
+    const h = new Headers(r.headers);
+    h.set('date', new Date(ctx.clock.now() - 21 * SECOND).toUTCString());
+    h.set('age', '22');
+    return new Response(r.body, { status: 200, headers: h });
+  };
+  await ctx.begin();
+  assert.deepEqual(ctx.valuesOf(GRID('demand')), [24000]);
+});
+
+test('one request at a time, even when a device is created during a read', async () => {
+  const ctx = await setup({ devices: 'grid' });
+  let inFlight = 0;
+  let peak = 0;
+  const slow = (key) => {
+    const live = ctx.world[key];
+    ctx.world[key] = (...args) => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      return new Promise((resolve) =>
+        ctx.clock.timers.setTimeout(() => {
+          inFlight -= 1;
+          resolve(live(...args));
+        }, 3000),
+      );
+    };
+  };
+  slow('outlook');
+  slow('oasis');
+  ctx.app.connected(() => ctx.gladys.getConfig());
+  await ctx.wait(2 * SECOND);
+  assert.equal(ctx.sources.count('outlook'), 1);
+  assert.equal(inFlight, 1, 'the Outlook still answering');
+  await ctx.create('hub', 'np15');
+  await ctx.wait(10 * SECOND);
+  await ctx.app.idle();
+  assert.equal(ctx.sources.count('oasis'), 1);
+  assert.equal(peak, 1);
+});
+
+test('a last good read dated in the future in /data (clock set back) is not believed', async () => {
+  const store = createMemoryStore({
+    asked: { outlook: NOW - MINUTE },
+    lastOk: { outlook: NOW + HOUR },
+  });
+  const ctx = await setup({ store, devices: 'grid' });
+  await ctx.begin();
+  assert.equal(ctx.status().connected, false);
+  assert.match(statusText(ctx), /^En attente de la première lecture/);
+});
+
+test('a state is never sent to a feature the device does not have', async () => {
+  const [grid] = (await import('./helpers/app.js')).discovered();
+  grid.features = grid.features.filter((f) => !f.external_id.endsWith(':demand'));
+  const ctx = await setup({ devices: [grid] });
+  await ctx.begin();
+  assert.deepEqual(ctx.valuesOf(GRID('demand')), []);
+  assert.deepEqual(ctx.valuesOf(GRID('co2')), [6600]);
+});
+
+test('/data trigger states out of range are ignored: a level 99 is no reference', async () => {
+  const store = createMemoryStore({ triggers: { alert: { level: 99, slot: NOW - HOUR } } });
+  const ctx = await setup({ store, devices: 'grid' });
+  await ctx.begin();
+  assert.deepEqual(ctx.gladys.fake.sceneEvents, []);
+  assert.equal(ctx.store.data.triggers.alert.level, 0);
+});
+
+test('a disconnection ends a getConfig still in flight: its answer starts nothing', async () => {
+  const ctx = await setup({ devices: 'grid' });
+  let release;
+  ctx.app.connected(
+    () =>
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+  );
+  await ctx.wait(SECOND);
+  await ctx.app.disconnected();
+  release({});
+  await ctx.wait(10 * SECOND);
+  await ctx.app.idle();
+  assert.equal(ctx.app.running, false);
+  assert.equal(ctx.sources.requests.length, 0);
+});
+
+test('after stop(), a publication already started sends no text and no event', async () => {
+  const ctx = await setup({ devices: 'grid' });
+  await ctx.begin();
+  ctx.world.state.outlook = { set: { gridstatus: ['Flex Alert'] } };
+  const publish = ctx.gladys.publishStates.bind(ctx.gladys);
+  ctx.gladys.publishStates = (list) =>
+    new Promise((resolve) => ctx.clock.timers.setTimeout(resolve, 2000)).then(() => publish(list));
+  await ctx.wait(5 * MINUTE + 500);
+  const before = ctx.gladys.fake.states.length;
+  const stopped = ctx.app.stop();
+  await ctx.wait(10 * SECOND);
+  await stopped;
+  const after = ctx.gladys.fake.states.slice(before);
+  // The values were already on their way; no text nor event after the stop.
+  assert.ok(
+    after.every((st) => st.text === undefined),
+    JSON.stringify(after),
+  );
+  assert.deepEqual(ctx.gladys.fake.sceneEvents, []);
+});
+
+test('an error answered after a stop changes nothing (no pause, no outcome)', async () => {
+  const ctx = await setup({ devices: 'grid' });
+  ctx.world.outlook = () =>
+    new Promise((resolve) =>
+      ctx.clock.timers.setTimeout(() => resolve(answer('busy', { status: 503 })), 5000),
+    );
+  ctx.app.connected(() => ctx.gladys.getConfig());
+  await ctx.wait(2 * SECOND);
+  ctx.app.disconnected();
+  await ctx.wait(6 * SECOND);
+  assert.equal(ctx.app.src.outlook.pause, undefined);
+  assert.equal(ctx.app.src.outlook.outcome, undefined);
+});
+
+test('a file with only a slot (every value unreadable) still turns stale on time, without a read', async () => {
+  const ctx = await setup({ devices: 'grid', config: { interval_minutes: 60 } });
+  const slot = slotOf(NOW - 3 * MINUTE);
+  const nulls = {
+    CurrentSystemDemand: null,
+    CurrentNetDemand: null,
+    renewablesPercent: null,
+    currentCo2intensity: null,
+    currentCo2: null,
+    gridstatus: null,
+  };
+  ctx.world.outlook = () =>
+    answer(outlookBody({ slot, set: nulls }), {
+      date: ctx.clock.now(),
+      lastModified: slot + 3 * MINUTE,
+    });
+  await ctx.begin();
+  assert.match(ctx.valuesOf(GRID('status')).at(-1), /^Relevé du/);
+  await ctx.wait(20 * MINUTE);
+  assert.equal(ctx.sources.count('outlook'), 1);
+  assert.match(ctx.valuesOf(GRID('status')).at(-1), /^Périmé/);
+});
+
+test('ZIP: a protected entry is refused', () => {
+  const zip = zipOne('a.csv', 'hello', { deflate: false });
+  const cd = zip.length - 22 - 46 - 5;
+  zip.writeUInt16LE(1, cd + 8);
+  assert.throws(() => unzipOne(zip, 100), /protected entry/);
+});
+
+test('/data that hangs on a save: said in the status, saves never pile up', async () => {
+  const store = createMemoryStore();
+  const ctx = await setup({ store, devices: 'grid' });
+  await ctx.begin();
+  let calls = 0;
+  store.save = () => {
+    calls += 1;
+    return new Promise(() => {});
+  };
+  await ctx.wait(10 * MINUTE + 20 * SECOND);
+  assert.equal(calls, 1, 'one save waits, the others fold into it');
+  assert.match(statusText(ctx), /\/data ne répond pas/);
+  // The reads keep their pace meanwhile.
+  assert.equal(ctx.sources.count('outlook'), 3);
+});
+
+test('a restart during a pause: the status says the pause and its cause', async () => {
+  const store = createMemoryStore({
+    asked: { oasis: NOW - MINUTE },
+    pauses: { oasis: { until: NOW + 20 * MINUTE, count: 2, code: 'rate_limited', status: 429 } },
+  });
+  const ctx = await setup({ store, devices: 'hubs' });
+  await ctx.begin();
+  assert.equal(ctx.sources.count('oasis'), 0);
+  assert.match(statusText(ctx), /prix OASIS : trop de requêtes \(HTTP 429\), pause de 20 min/);
+});
+
+test('the repeated hour of November: PDT then PST in the texts', async () => {
+  const at = Date.UTC(2026, 10, 1, 8, 59);
+  const ctx = await setup({ devices: 'grid', clock: testClock({ start: at }) });
+  await ctx.begin();
+  await ctx.wait(HOUR);
+  const texts = ctx.valuesOf(GRID('status'));
+  assert.ok(texts.includes('Relevé du 01/11 01:55 PDT'), JSON.stringify(texts));
+  assert.ok(texts.includes('Relevé du 01/11 01:55 PST'), JSON.stringify(texts));
+});
+
+test('a long status text is cut at a word, with an ellipsis, never inside a word', async () => {
+  const { bound, gridStatus } = await import('../src/i18n.js');
+  assert.equal(bound('short text'), 'short text');
+  const cut = bound('word '.repeat(50));
+  assert.ok(cut.length <= 160);
+  assert.match(cut, / word…$/);
+  assert.equal(bound('x'.repeat(200)).length, 160);
+  const all = gridStatus('fr', {
+    code: 'fresh',
+    slot: Date.UTC(2026, 9, 30, 5, 55),
+    missing: ['demand', 'net_demand', 'renewables', 'carbon_intensity', 'co2', 'conditions'],
+    noLevel: true,
+  });
+  assert.ok(all.length <= 160, all);
+  const lastWord = all
+    .replace(/…$/, '')
+    .split(/[\s,;]+/)
+    .at(-1);
+  assert.ok(
+    /…$/.test(all) === false ||
+      ["d'alerte", 'reconnu', 'conditions', 'CO2', 'carbone', 'intensité', 'renouvelable'].includes(
+        lastWord,
+      ),
+    all,
+  );
+});
+
+test('/data pauses that are not ours (count 0, unknown code) are ignored: read at once', async () => {
+  for (const pause of [
+    { until: NOW + HOUR, count: 0, code: 'rate_limited' },
+    { until: NOW + HOUR, count: 2, code: 'maintenance' },
+  ]) {
+    const store = createMemoryStore({ pauses: { oasis: pause } });
+    const ctx = await setup({ store, devices: 'hubs' });
+    await ctx.begin();
+    assert.equal(ctx.sources.count('oasis'), 1, JSON.stringify(pause));
+  }
+});

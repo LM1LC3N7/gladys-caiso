@@ -116,9 +116,11 @@ export function parseOutlook(text, anchor) {
  * The level is the highest entry recognized. "Transmission Emergency" (a
  * regional notice, it says nothing of the supply of the whole grid) is
  * recognized but has no level of its own: it never hides an EEA nor lowers
- * the level; alone, it means no supply notice in force: level 0.
+ * the level; alone in the list, it means no supply notice in force: level 0.
  * An entry not recognized (a new wording, "EEA 3 cancelled") is set aside and
- * named in the status; with no entry carrying a level, the level is unknown.
+ * named in the status; the level is then a minimum. It is unknown (never
+ * published) when no entry carries one, or when it would be 0 next to an entry
+ * not recognized ("Normal" or "Transmission Emergency" with "EEA-3").
  */
 export const LEVELS = ['normal', 'rmo', 'flex_alert', 'eea_watch', 'eea1', 'eea2', 'eea3'];
 
@@ -167,6 +169,10 @@ export function classify(conditions) {
   // Only Transmission Emergency: no supply notice in force (never a level left
   // over from an earlier EEA).
   if (out.level === undefined && out.transmission) out.level = 0;
+  // Level 0 says no notice is in force: never next to an entry not recognized
+  // ("EEA-3", a new wording, could be any notice). Unknown instead, so that a
+  // new wording never fires a "back to normal" in the middle of an emergency.
+  if (out.level === 0 && out.unknown.length > 0) out.level = undefined;
   return out;
 }
 

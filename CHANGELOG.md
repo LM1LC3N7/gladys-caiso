@@ -27,7 +27,8 @@ the notes of the version's GitHub Release.
   price" (threshold of the form, started / ended) and "Grid conditions
   changed" (Normal, Restricted Maintenance Operations, Flex Alert, EEA Watch,
   EEA 1-3; the highest entry recognized, Transmission Emergency shown without
-  a level), once per change, never after a restart. The age of a reading counts
+  a level, 0 only when every entry is recognized), once per change, never
+  after a restart. The age of a reading counts
   the `Age` of a cache. The alert level comes from a field the ISO's page no
   longer shows: said in the docs and the status. Read-only. Wholesale
   prices are not a retail rate: said in the docs, the texts and the status.

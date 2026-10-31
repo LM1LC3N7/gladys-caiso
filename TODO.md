@@ -18,8 +18,13 @@
       entries, review r1): Normal, RMO, Flex Alert, Transmission Emergency (no
       level), EEA Watch, EEA 1-3 (EEA1, Energy Emergency Alert n, a dash
       comment unless it starts with an end word: "- cancelled", "- expired"...);
-      Transmission Emergency alone = 0; the four lists of 5-6 September 2022
-      (Wayback) give 4, 5, 1, 6.
+      Transmission Emergency alone in the list = 0; an entry not recognized is
+      left out (the level is then a minimum), but level 0 needs every entry
+      recognized: "Transmission Emergency" or "Normal" next to an entry not
+      recognized ("EEA-3, EEA-2, Transmission Emergency") = unknown, not
+      published, no "Grid conditions changed", the entry named in the status
+      (review r3); the four lists of 5-6 September 2022 (Wayback) give 4, 5,
+      1, 6.
       Ask the ISO whether ActiveEvents may be used as an open feed; if so, read
       it as the main source of the level.
 - [ ] `renewablesPercent` vs `renewablesPercentwoBatteries` (equal on

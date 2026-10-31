@@ -208,8 +208,9 @@ test('alert levels: each entry matched whole; spaces and case folded; an ended n
 });
 
 test('alert levels: an entry not recognized is named and left out, never lowering the others', () => {
-  assert.deepEqual(classify(['Normal', 'Grid Warning']), {
-    level: 0,
+  // Above 0, the level is a minimum: an entry not recognized never lowers it.
+  assert.deepEqual(classify(['RMO', 'Grid Warning']), {
+    level: 1,
     unknown: ['Grid Warning'],
     transmission: false,
   });
@@ -224,4 +225,42 @@ test('alert levels: an entry not recognized is named and left out, never lowerin
     levelOf(['EEA 2 - load management programs over the peak', 'EEA 1', 'EEA Watch']),
     5,
   );
+});
+
+test('alert levels: 0 only from a list whose every entry is recognized, never next to an unknown one', () => {
+  // Transmission Emergency alone in the list: no supply notice in force.
+  assert.deepEqual(classify(['Transmission Emergency']), {
+    level: 0,
+    unknown: [],
+    transmission: true,
+  });
+  assert.equal(levelOf(['Transmission Emergency', 'Transmission Emergency - Southern CA']), 0);
+  // With "Normal", both recognized: 0, the flag kept, whatever the order.
+  assert.deepEqual(classify(['Transmission Emergency', 'Normal']), {
+    level: 0,
+    unknown: [],
+    transmission: true,
+  });
+  assert.equal(levelOf(['Normal', 'Transmission Emergency']), 0);
+  // With a supply notice: the notice, never 0.
+  assert.equal(levelOf(['Transmission Emergency', 'Flex Alert']), 2);
+  // Review r3: a new wording of an EEA next to Transmission Emergency is
+  // unknown, never 0 (never a "back to normal" during an EEA 3).
+  assert.deepEqual(classify(['Transmission Emergency', 'EEA-3']), {
+    level: undefined,
+    unknown: ['EEA-3'],
+    transmission: true,
+  });
+  assert.equal(classify(['EEA-3', 'EEA-2', 'Transmission Emergency']).level, undefined);
+  assert.equal(classify(['Transmission Emergency', 'EEA 3 - cancelled']).level, undefined);
+  assert.equal(classify(['Transmission Emergency', 'Normal', 'EEA-3']).level, undefined);
+  // "Normal" next to an entry not recognized: unknown too, never 0.
+  assert.deepEqual(classify(['Normal', 'Grid Warning']), {
+    level: undefined,
+    unknown: ['Grid Warning'],
+    transmission: false,
+  });
+  assert.equal(levelOf(['EEA-3', 'Normal']), undefined);
+  // An entry not recognized next to a notice: the notice stays (a minimum).
+  assert.equal(levelOf(['Transmission Emergency', 'Flex Alert', 'EEA-3']), 2);
 });

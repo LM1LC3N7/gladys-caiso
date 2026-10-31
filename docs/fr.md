@@ -118,19 +118,27 @@ l'opérateur et à
 | 2      | Flex Alert                                                   |
 | 3      | EEA Watch (Energy Emergency Alert Watch)                     |
 | 4-6    | EEA 1, EEA 2, EEA 3 (Energy Emergency Alert 1, 2, 3 ; EEA1…) |
-| aucun  | Transmission Emergency (seul : 0)                            |
+| aucun  | Transmission Emergency (seul dans la liste : 0)              |
 
 Le niveau est **le plus haut des éléments reconnus** : le 6 septembre 2022, la
 liste « EEA 3, EEA 2, EEA 1, EEA Watch, Flex Alert, Restricted Maintenance
-Operations, Transmission Emergency » donne 6. « Transmission Emergency » est un
-avis régional : il apparaît dans « Conditions du réseau » et ne change jamais
-le niveau ; seul (aucun avis d'approvisionnement dans la liste), le niveau est
-0, pour qu'un niveau ne reste jamais sur une ancienne EEA. Un élément non reconnu (un nouveau libellé, ou un avis dit terminé,
-comme « EEA 3 cancelled ») est laissé hors du niveau et cité dans l'état :
-**le niveau publié est alors un minimum, et peut être sous le niveau réel**
-(un élément non reconnu pourrait être un avis plus haut). Quand aucun élément ne porte de niveau, le niveau est inconnu et n'est pas
-publié : Gladys garde alors le dernier niveau publié, le texte « Conditions du
-réseau » et l'état disent ce qu'a écrit l'opérateur.
+Operations, Transmission Emergency » donne 6. « Transmission Emergency » est
+un avis régional : il apparaît dans « Conditions du réseau » et n'élève
+jamais le niveau ; seul dans la liste (rien d'autre que Transmission
+Emergency), le niveau est 0, pour que le niveau ne reste pas sur une
+ancienne EEA. Un élément non reconnu (un nouveau libellé, ou un avis dit
+terminé, comme « EEA 3 cancelled ») est laissé hors du niveau et cité dans
+l'état : **le niveau publié est alors un minimum, et peut être sous le niveau
+réel** (un élément non reconnu pourrait être un avis plus haut). Le niveau 0
+exige que tous les éléments soient reconnus : « Transmission Emergency » ou
+« Normal » à côté d'un élément non reconnu (« EEA-3, EEA-2, Transmission
+Emergency ») donne un niveau inconnu, jamais 0 : un élément non reconnu ne
+ramène jamais le niveau à la normale, ni ne déclenche de « retour à la
+normale ». Quand le niveau est inconnu (aucun élément ne porte de niveau, ou 0
+à côté d'un élément non reconnu), il n'est pas publié et « Conditions du
+réseau changées » ne part pas : Gladys garde le dernier niveau publié, le
+texte « Conditions du réseau » et l'état disent ce qu'a écrit l'opérateur, et
+l'état cite les éléments non reconnus.
 
 ## Déclencheurs de scène
 

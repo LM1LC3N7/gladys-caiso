@@ -112,20 +112,25 @@ seven notices of the ISO and "Normal":
 | 2     | Flex Alert                                                  |
 | 3     | EEA Watch (Energy Emergency Alert Watch)                    |
 | 4-6   | EEA 1, EEA 2, EEA 3 (Energy Emergency Alert 1, 2, 3; EEA1…) |
-| none  | Transmission Emergency (alone: 0)                           |
+| none  | Transmission Emergency (alone in the list: 0)               |
 
 The level is the **highest entry recognized**: on 6 September 2022 the list
 "EEA 3, EEA 2, EEA 1, EEA Watch, Flex Alert, Restricted Maintenance
 Operations, Transmission Emergency" gives 6. "Transmission Emergency" is a
-regional notice: it is shown in "Grid conditions" and never changes the
-level; alone (no supply notice in the list), the level is 0, so that a level
-never stays at an old EEA. An entry not recognized (a new wording, or one saying the notice ended,
-as "EEA 3 cancelled") is left out of the level and named in the status: **the
-level published is then a minimum, and may be below the real one** (an
-unrecognized entry could be a higher notice). When
-no entry carries a level, the level is unknown and not published: Gladys then
-keeps showing the last level published, the "Grid conditions" text and the
-status say what the ISO wrote.
+regional notice: it is shown in "Grid conditions" and never raises the level;
+alone in the list (nothing but Transmission Emergency), the level is 0, so
+that the level does not stay at an old EEA. An entry not recognized (a new
+wording, or one saying the notice ended, as "EEA 3 cancelled") is left out of
+the level and named in the status: **the level published is then a minimum,
+and may be below the real one** (an unrecognized entry could be a higher
+notice). Level 0 needs every entry recognized: "Transmission Emergency" or
+"Normal" next to an entry not recognized ("EEA-3, EEA-2, Transmission
+Emergency") gives an unknown level, never 0: an entry not recognized never
+brings the level back to normal, nor fires "back to normal". When the level is
+unknown (no entry carrying a level, or 0 next to an entry not recognized), it
+is not published and "Grid conditions changed" does not fire: Gladys keeps
+showing the last level published, the "Grid conditions" text and the status
+say what the ISO wrote, and the status names the entries not recognized.
 
 ## Scene triggers
 

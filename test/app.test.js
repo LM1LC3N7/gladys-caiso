@@ -506,6 +506,43 @@ test('trigger grid_alert: the first level is a reference, one event per change, 
   });
 });
 
+test('trigger grid_alert: a new wording next to Transmission Emergency or "Normal" is unknown, never "back to normal"', async () => {
+  // Review r3: during an EEA 3, CAISO writes "EEA-3" next to Transmission
+  // Emergency. Before, the level fell to 0 and "eea3 -> normal" fired.
+  const ctx = await setup({ devices: 'grid', config: { language: 'en' } });
+  const say = (list) => {
+    ctx.world.state.outlook = { set: { gridstatus: list } };
+  };
+  await ctx.begin();
+  say(['EEA 3', 'EEA 2', 'EEA 1', 'EEA Watch', 'Transmission Emergency']);
+  await ctx.wait(5 * MINUTE);
+  assert.deepEqual(ctx.valuesOf(GRID('alert_level')), [0, 6]);
+  const events = () =>
+    ctx.gladys.fake.sceneEvents.map((e) => e.data.previous_level + '>' + e.data.level);
+  assert.deepEqual(events(), ['normal>eea3']);
+  for (const list of [
+    ['EEA-3', 'EEA-2', 'Transmission Emergency'],
+    ['Transmission Emergency', 'EEA 3 - cancelled'],
+    ['Normal', 'EEA-3'],
+  ]) {
+    say(list);
+    await ctx.wait(5 * MINUTE);
+    assert.deepEqual(ctx.valuesOf(GRID('alert_level')), [0, 6], JSON.stringify(list));
+    assert.deepEqual(events(), ['normal>eea3'], JSON.stringify(list));
+    assert.equal(ctx.valuesOf(GRID('conditions')).at(-1), list.join(', '));
+    assert.match(ctx.valuesOf(GRID('status')).at(-1), /; no alert level recognized$/);
+  }
+  assert.match(
+    ctx.status().message.en,
+    /grid conditions not recognized, left out of the alert level: "EEA-3"/,
+  );
+  // Transmission Emergency truly alone: 0, and then the event.
+  say(['Transmission Emergency']);
+  await ctx.wait(5 * MINUTE);
+  assert.deepEqual(ctx.valuesOf(GRID('alert_level')), [0, 6, 0]);
+  assert.deepEqual(events(), ['normal>eea3', 'eea3>normal']);
+});
+
 test('trigger grid_alert: a stale reading never fires; a refused event is sent at the next reading', async () => {
   const ctx = await setup({ devices: 'grid' });
   await ctx.begin();

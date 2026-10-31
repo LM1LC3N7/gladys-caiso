@@ -126,3 +126,7 @@ dollar` in $/MWh (the native unit, the name says it). Alert level 0-6 is
 
 - The day-ahead hourly prices (`PRC_LMP`, DAM) for "cheapest hour tomorrow".
 - Other ISOs (PJM, NYISO, ISO-NE, MISO, SPP): one module each.
+
+## Next patch (review r4, be9f99e)
+
+- m1 (docs): a "grid conditions changed" event to a lower level while the status quotes an unrecognised entry is a minimum, not a confirmed end; advise relaxing scenes only on the level "normal".

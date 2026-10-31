@@ -1,6 +1,6 @@
 {
   "name": "gladys-caiso",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "California grid (CAISO) for Gladys Assistant, from the public files of the California ISO: real-time wholesale prices of the NP15, SP15 and ZP26 hubs, demand, renewables share, CO2, grid conditions (Flex Alert, EEA) and scene triggers. Read-only.",
   "type": "module",

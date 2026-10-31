@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-31
+
 ### Added
 
 - First version: the California grid from the public files of the California
@@ -32,3 +34,6 @@ the notes of the version's GitHub Release.
   the `Age` of a cache. The alert level comes from a field the ISO's page no
   longer shows: said in the docs and the status. Read-only. Wholesale
   prices are not a retail rate: said in the docs, the texts and the status.
+
+[Unreleased]: https://github.com/LM1LC3N7/gladys-caiso/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/LM1LC3N7/gladys-caiso/releases/tag/v0.1.1

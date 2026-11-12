@@ -46,8 +46,8 @@
   registry on 2026-10-30). No other runtime dependency.
 - Manifest: `categories: ["energy", "environment"]` (tariffs and the grid
   carbon, §3 of the catalog spec), `transports: ["cloud"]`,
-  `gladys_version: ">=5.1.0"` (scene triggers); no `keywords` / `countries`
-  yet (to add when the core accepts them: `US`).
+  `gladys_version: ">=5.3.0"` (scene triggers need 5.1.0, `countries: ["US"]`
+  5.3.0); no `keywords` yet.
 - Reference: gridstatus 0.37.0 (BSD-3-Clause, notice in
   THIRD_PARTY_NOTICES.md) read for the endpoints and the OASIS query; no code
   ported, no Python. Parsers written from the real answers of 2026-10-30.

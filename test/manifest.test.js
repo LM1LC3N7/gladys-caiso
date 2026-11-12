@@ -67,8 +67,8 @@ test('the store basics; one semver version in 4 places (and the User-Agent), nev
   assert.deepEqual(Object.keys(pkg.dependencies), ['@gladysassistant/integration-sdk']);
   assert.deepEqual(manifest.categories, ['energy', 'environment']);
   assert.deepEqual(manifest.transports, ['cloud']);
-  assert.equal(manifest.gladys_version, '>=5.1.0');
-  assert.ok(!('keywords' in manifest) && !('countries' in manifest), 'in TODO.md for later');
+  assert.equal(manifest.gladys_version, '>=5.3.0');
+  assert.ok(!('keywords' in manifest), 'in TODO.md for later');
   assert.match(
     manifest.cover_image,
     /^https:\/\/raw\.githubusercontent\.com\/LM1LC3N7\/gladys-caiso\//,
@@ -323,4 +323,13 @@ test('external ids: only ours, never a dot, a colon nor a slash', () => {
   assert.equal(validId('grid', 'caiso'), true);
   assert.equal(validId('grid', 'np15'), false);
   assert.equal(validId('hub', 'caiso'), false);
+});
+
+test('the catalog countries: the United States, which needs Gladys >= 5.3.0', () => {
+  assert.deepEqual(manifest.countries, ['US']);
+  const [major, minor] = manifest.gladys_version
+    .match(/>=\s*(\d+)\.(\d+)/)
+    .slice(1)
+    .map(Number);
+  assert.ok(major > 5 || (major === 5 && minor >= 3), 'countries needs Gladys 5.3.0');
 });

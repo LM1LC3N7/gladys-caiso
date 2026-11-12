@@ -8,6 +8,7 @@
 // unreadable or unwritable.
 // -----------------------------------------------------------------------------
 
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createMemoryStore } from '../src/store.js';
@@ -25,6 +26,9 @@ import {
   slotOf,
 } from './helpers/app.js';
 import { testClock } from './helpers/clock.js';
+
+// The released version, never written here: the Release workflow bumps it.
+const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 const statusText = (ctx) => ctx.status().message?.fr ?? '';
 const gaps = (list) => list.slice(1).map((r, i) => r.mono - list[i].mono);
@@ -58,7 +62,7 @@ test('the grid: the Outlook read at once, every value once, in the units of the 
   assert.equal(ctx.sources.count('outlook'), 1);
   assert.equal(ctx.sources.count('oasis'), 0);
   const headers = ctx.sources.requests[0].headers;
-  assert.match(headers['User-Agent'], /^gladys-caiso\/0\.1\.0 \(\+https:\/\/github\.com\//);
+  assert.ok(headers['User-Agent'].startsWith(`gladys-caiso/${version} (+https://github.com/`));
   assert.equal(headers.Accept, 'application/json, text/plain;q=0.9');
   assert.deepEqual(ctx.valuesOf(GRID('demand')), [24000]);
   assert.deepEqual(ctx.valuesOf(GRID('net_demand')), [20500]);
